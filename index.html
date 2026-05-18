@@ -342,12 +342,25 @@
         </div>
 
         <div id="property-form-panel" class="form-panel hidden">
-          <h3>Add / Edit Property</h3>
-          <form id="property-form">
+          <h3 id="property-form-title">Add Property</h3>
+          <form id="property-form" novalidate>
             <input type="hidden" name="id" />
             <div class="form-row">
-              <label>Property name</label>
-              <input type="text" name="name" required />
+              <label>Property name / reference <span class="required">*</span></label>
+              <input type="text" name="name" required placeholder="e.g. Milman Road" />
+              <span class="field-error hidden" data-field="name">Please enter a property name.</span>
+            </div>
+            <div class="form-row">
+              <label>Full address</label>
+              <textarea name="address" rows="2" placeholder="Street, City, Postcode"></textarea>
+            </div>
+            <div class="form-row">
+              <label>Status</label>
+              <select name="status" id="prop-status-select">
+                <option value="active">Active — currently letting</option>
+                <option value="vacant">Vacant</option>
+                <option value="sold">Sold / disposed</option>
+              </select>
             </div>
             <div class="form-row">
               <label>Purchase date</label>
@@ -355,14 +368,25 @@
             </div>
             <div class="form-row">
               <label>Purchase price (£)</label>
-              <input type="number" name="purchase_price" step="0.01" min="0" />
+              <input type="number" name="purchase_price" step="0.01" min="0" placeholder="0.00" />
             </div>
             <div class="form-row">
               <label>Ownership %</label>
-              <input type="number" name="ownership_pct" step="0.1" min="0" max="100" value="100" />
+              <input type="number" name="ownership_pct" step="0.1" min="1" max="100" value="100" />
+            </div>
+            <div id="sale-fields" class="sale-fields hidden">
+              <div class="sale-fields-heading">Disposal details</div>
+              <div class="form-row">
+                <label>Sale / disposal date</label>
+                <input type="date" name="sale_date" />
+              </div>
+              <div class="form-row">
+                <label>Sale / disposal price (£)</label>
+                <input type="number" name="sale_price" step="0.01" min="0" placeholder="0.00" />
+              </div>
             </div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="submit" class="btn btn-primary">Save property</button>
               <button type="button" class="btn btn-ghost" id="btn-cancel-property">Cancel</button>
             </div>
           </form>
@@ -374,13 +398,14 @@
 
         <div class="card properties-actions">
           <h3>Data</h3>
+          <p class="properties-actions-hint">Export a full JSON backup of all records, or restore from a previous backup.</p>
           <div class="action-row">
-            <button class="btn btn-secondary" id="btn-export">Export JSON backup</button>
-            <button class="btn btn-secondary" id="btn-import">Import JSON</button>
+            <button class="btn btn-secondary" id="btn-export">↓ Export JSON backup</button>
+            <button class="btn btn-secondary" id="btn-import">↑ Import JSON</button>
             <input type="file" id="import-input" accept=".json" class="hidden" />
           </div>
           <div class="action-row action-row--danger">
-            <button class="btn btn-danger" id="btn-signout">Sign out</button>
+            <button class="btn btn-danger" id="btn-signout">Sign out of Google</button>
           </div>
         </div>
       </section>

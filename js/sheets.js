@@ -4,7 +4,7 @@ const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 // Column order per tab — must match order records are serialised into rows
 const TAB_COLUMNS = {
-  Properties: ['id','name','purchase_date','purchase_price','ownership_pct'],
+  Properties: ['id','name','address','status','purchase_date','purchase_price','ownership_pct','sale_date','sale_price'],
   Income:     ['id','property_id','date','tax_year','amount','type','tenant_ref','receipt_ref','notes'],
   Expenses:   ['id','property_id','date','tax_year','amount','category','supplier','receipt_ref','notes','is_capital','status'],
   CGT:        ['id','property_id','category','description','amount','date'],

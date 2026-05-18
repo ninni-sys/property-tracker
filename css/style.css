@@ -529,19 +529,95 @@ textarea { resize: vertical; min-height: 64px; }
   padding: 14px 16px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
+  transition: opacity .2s;
 }
 
-.property-card-info { flex: 1; }
+.property-card.sold { opacity: 0.55; }
 
-.property-card-name { font-weight: 600; font-size: 1rem; }
+.property-card-info { flex: 1; min-width: 0; }
 
-.property-card-meta { font-size: .8rem; color: var(--text-muted); margin-top: 3px; }
+.property-card-name {
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.property-card-actions { display: flex; gap: 6px; }
+.property-card-address {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.property-card-meta {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.property-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.property-status-badge.active  { background: rgba(16,185,129,.15); color: var(--accent); }
+.property-status-badge.vacant  { background: rgba(245,158,11,.12); color: var(--warn); }
+.property-status-badge.sold    { background: rgba(239,68,68,.12);  color: var(--danger); }
+
+.property-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* sale fields inside property form */
+.sale-fields {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.sale-fields-heading {
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+/* required star */
+.required { color: var(--danger); margin-left: 2px; }
+
+/* inline field validation */
+.field-error {
+  font-size: .75rem;
+  color: var(--danger);
+  margin-top: 3px;
+}
 
 /* ─── Properties data actions ───────────────────────────────── */
+.properties-actions-hint {
+  font-size: .8rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
 .properties-actions .action-row {
   display: flex;
   gap: 8px;

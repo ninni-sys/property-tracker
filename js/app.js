@@ -1,9 +1,9 @@
 // Main app — routing, rendering, UI wiring
 // Pre-loaded properties (seeded into IndexedDB on first run if empty)
 const SEED_PROPERTIES = [
-  { id: 'prop-1', name: 'Milman Road',                  purchase_date: '', purchase_price: '', ownership_pct: 100 },
-  { id: 'prop-2', name: 'Annex, 79 Commonside, Sheffield', purchase_date: '', purchase_price: '', ownership_pct: 100 },
-  { id: 'prop-3', name: '29 Modling House, London',     purchase_date: '', purchase_price: '', ownership_pct: 100 },
+  { id: 'prop-1', name: 'Milman Road',                    address: '',  status: 'active', purchase_date: '', purchase_price: '', ownership_pct: 100, sale_date: '', sale_price: '' },
+  { id: 'prop-2', name: 'Annex, 79 Commonside, Sheffield', address: '', status: 'active', purchase_date: '', purchase_price: '', ownership_pct: 100, sale_date: '', sale_price: '' },
+  { id: 'prop-3', name: '29 Modling House, London',        address: '', status: 'active', purchase_date: '', purchase_price: '', ownership_pct: 100, sale_date: '', sale_price: '' },
 ];
 
 // ─── Routing ─────────────────────────────────────────────────
@@ -359,22 +359,39 @@ async function renderPropertyList() {
     el.innerHTML = '<p class="empty-state">No properties added yet.</p>';
     return;
   }
-  el.innerHTML = _properties.map(p => `
-    <div class="property-card">
-      <div class="property-card-info">
-        <div class="property-card-name">${p.name}</div>
-        <div class="property-card-meta">
-          ${p.purchase_date ? `Purchased ${formatDate(p.purchase_date)}` : 'No purchase date'}
-          ${p.purchase_price ? ` · ${formatGBP(p.purchase_price)}` : ''}
-          ${p.ownership_pct != null ? ` · ${p.ownership_pct}% ownership` : ''}
+
+  // Active/vacant first, sold last
+  const sorted = [..._properties].sort((a, b) => {
+    const order = { active: 0, vacant: 1, sold: 2 };
+    return (order[a.status] ?? 0) - (order[b.status] ?? 0);
+  });
+
+  el.innerHTML = sorted.map(p => {
+    const status = p.status || 'active';
+    const statusLabel = { active: 'Active', vacant: 'Vacant', sold: 'Sold' }[status] || status;
+    const metaParts = [];
+    if (p.purchase_date) metaParts.push(`Purchased ${formatDate(p.purchase_date)}`);
+    if (p.purchase_price) metaParts.push(formatGBP(p.purchase_price));
+    if (p.ownership_pct != null && p.ownership_pct !== 100) metaParts.push(`${p.ownership_pct}% owned`);
+    if (status === 'sold' && p.sale_date) metaParts.push(`Sold ${formatDate(p.sale_date)}`);
+
+    return `
+      <div class="property-card ${status === 'sold' ? 'sold' : ''}">
+        <div class="property-card-info">
+          <div class="property-card-name">${p.name}</div>
+          ${p.address ? `<div class="property-card-address">${p.address.replace(/\n/g, ', ')}</div>` : ''}
+          <div class="property-card-meta">
+            <span class="property-status-badge ${status}">${statusLabel}</span>
+            ${metaParts.join(' · ')}
+          </div>
+        </div>
+        <div class="property-card-actions">
+          <button class="btn btn-secondary btn-sm" data-edit-prop="${p.id}">Edit</button>
+          <button class="btn btn-danger btn-sm" data-delete-prop="${p.id}">Delete</button>
         </div>
       </div>
-      <div class="property-card-actions">
-        <button class="btn btn-secondary btn-sm" data-edit-prop="${p.id}">Edit</button>
-        <button class="btn btn-danger btn-sm" data-delete-prop="${p.id}">Delete</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   el.querySelectorAll('[data-edit-prop]').forEach(btn => {
     btn.addEventListener('click', () => openPropertyForm(btn.dataset.editProp));
@@ -385,20 +402,34 @@ async function renderPropertyList() {
 }
 
 function openPropertyForm(id) {
-  const panel = document.getElementById('property-form-panel');
-  const form  = document.getElementById('property-form');
+  const panel      = document.getElementById('property-form-panel');
+  const form       = document.getElementById('property-form');
+  const titleEl    = document.getElementById('property-form-title');
+  const saleFields = document.getElementById('sale-fields');
   panel.classList.remove('hidden');
   form.reset();
+  saleFields.classList.add('hidden');
+  document.querySelectorAll('.field-error').forEach(e => e.classList.add('hidden'));
+
   if (id) {
     const p = _properties.find(x => x.id === id);
     if (p) {
-      form.id.value             = p.id;
-      form.name.value           = p.name;
-      form.purchase_date.value  = p.purchase_date || '';
-      form.purchase_price.value = p.purchase_price || '';
-      form.ownership_pct.value  = p.ownership_pct ?? 100;
+      titleEl.textContent          = 'Edit Property';
+      form.id.value                = p.id;
+      form.name.value              = p.name;
+      form.address.value           = p.address || '';
+      form.status.value            = p.status || 'active';
+      form.purchase_date.value     = p.purchase_date || '';
+      form.purchase_price.value    = p.purchase_price || '';
+      form.ownership_pct.value     = p.ownership_pct ?? 100;
+      form.sale_date.value         = p.sale_date || '';
+      form.sale_price.value        = p.sale_price || '';
+      if ((p.status || 'active') === 'sold') saleFields.classList.remove('hidden');
     }
+  } else {
+    titleEl.textContent = 'Add Property';
   }
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function deleteProperty(id) {
@@ -506,32 +537,50 @@ function initExpenseForm() {
 
 // ─── Form: property ───────────────────────────────────────────
 function initPropertyForm() {
-  const btn    = document.getElementById('btn-add-property');
-  const panel  = document.getElementById('property-form-panel');
-  const form   = document.getElementById('property-form');
-  const cancel = document.getElementById('btn-cancel-property');
+  const btn        = document.getElementById('btn-add-property');
+  const panel      = document.getElementById('property-form-panel');
+  const form       = document.getElementById('property-form');
+  const cancel     = document.getElementById('btn-cancel-property');
+  const statusSel  = document.getElementById('prop-status-select');
+  const saleFields = document.getElementById('sale-fields');
 
-  btn.addEventListener('click', () => {
-    panel.classList.remove('hidden');
-    form.reset();
-    form.ownership_pct.value = 100;
-    form.id.value = '';
-  });
+  btn.addEventListener('click', () => openPropertyForm(null));
 
   cancel.addEventListener('click', () => panel.classList.add('hidden'));
 
+  // Show/hide sale fields based on status
+  statusSel.addEventListener('change', () => {
+    saleFields.classList.toggle('hidden', statusSel.value !== 'sold');
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    // Inline validation
+    const nameInput = form.elements['name'];
+    const nameError = form.querySelector('.field-error[data-field="name"]');
+    if (!nameInput.value.trim()) {
+      nameError.classList.remove('hidden');
+      nameInput.focus();
+      return;
+    }
+    nameError.classList.add('hidden');
+
     const fd = new FormData(form);
     const existingId = fd.get('id');
     const id = existingId || generateId();
     const isNew = !existingId;
+    const status = fd.get('status') || 'active';
     const record = {
       id,
-      name:           fd.get('name'),
+      name:           fd.get('name').trim(),
+      address:        fd.get('address').trim(),
+      status,
       purchase_date:  fd.get('purchase_date'),
       purchase_price: fd.get('purchase_price') ? parseFloat(fd.get('purchase_price')) : '',
       ownership_pct:  fd.get('ownership_pct') ? parseFloat(fd.get('ownership_pct')) : 100,
+      sale_date:      status === 'sold' ? (fd.get('sale_date') || '') : '',
+      sale_price:     status === 'sold' && fd.get('sale_price') ? parseFloat(fd.get('sale_price')) : '',
     };
     await dbPut('properties', record);
     _sheetsWrite('Properties', isNew ? 'append' : 'update', record);
@@ -542,7 +591,7 @@ function initPropertyForm() {
     form.reset();
     populatePropertySelects();
     await renderPropertyList();
-    showToast('Property saved ✓', 'success');
+    showToast(`Property ${isNew ? 'added' : 'updated'} ✓`, 'success');
   });
 }
 
@@ -564,24 +613,30 @@ async function exportJSON() {
   a.download = `property-tracker-backup-${date}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('Export downloaded ✓', 'success');
+  showToast(`Exported: ${properties.length} properties, ${income.length} income, ${expenses.length} expenses ✓`, 'success', 4000);
 }
 
 async function importJSON(file) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
+    if (!data.properties && !data.income && !data.expenses) {
+      showToast('Import failed — not a valid backup file', 'error');
+      return;
+    }
     const stores = ['properties', 'income', 'expenses', 'cgt', 'gmailScan'];
+    let counts = {};
     for (const store of stores) {
       if (Array.isArray(data[store])) {
         for (const record of data[store]) { await dbPut(store, record); }
+        counts[store] = data[store].length;
       }
     }
     _properties = await dbGetAll('properties');
     populatePropertySelects();
-    renderPropertyList();
-    renderDashboard();
-    showToast(`Import complete ✓`, 'success');
+    await Promise.all([renderPropertyList(), renderDashboard(), renderIncomeLedger(), renderExpenseLedger(), renderReviewList(), renderCGT()]);
+    const summary = `${counts.properties ?? 0} properties · ${counts.income ?? 0} income · ${counts.expenses ?? 0} expenses`;
+    showToast(`Import complete ✓ — ${summary}`, 'success', 5000);
   } catch (err) {
     showToast('Import failed — invalid JSON', 'error');
   }
