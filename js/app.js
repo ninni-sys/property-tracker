@@ -1618,6 +1618,11 @@ async function init() {
     console.warn('config.js not found — copy config.example.js to config.js and fill in your credentials');
   }
 
+  // Apply OS-specific class when running inside Electron
+  if (window.electronApp) {
+    document.body.classList.add('electron', `electron-${window.electronApp.platform}`);
+  }
+
   initSync();
 
   // Wire sign-in / sign-out

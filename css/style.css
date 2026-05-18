@@ -113,6 +113,12 @@ body {
 .header-title { font-weight: 600; font-size: .95rem; }
 .header-logo { border-radius: 8px; }
 
+/* Electron Mac: traffic-light buttons occupy ~70px on the left side */
+.electron-mac .app-header { padding-left: 78px; -webkit-app-region: drag; }
+.electron-mac .app-header button,
+.electron-mac .app-header a,
+.electron-mac .app-header input { -webkit-app-region: no-drag; }
+
 /* ─── Sync indicator ────────────────────────────────────────── */
 .sync-indicator {
   display: flex;

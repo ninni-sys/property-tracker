@@ -4,24 +4,73 @@
   "description": "Property Tax Tracker — Electron desktop wrapper",
   "main": "main.js",
   "scripts": {
-    "electron":    "electron .",
-    "build:mac":   "electron-builder --mac",
-    "build:win":   "electron-builder --win"
+    "start":     "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac --win"
   },
   "build": {
     "appId":       "com.propertytaxtracker.app",
     "productName": "Property Tax Tracker",
-    "icon":        "../assets/icon.png",
+    "copyright":   "Copyright © 2025",
     "directories": {
       "buildResources": "../assets",
       "output":         "../dist"
     },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from":   "../",
+        "to":     "webapp",
+        "filter": [
+          "index.html",
+          "manifest.json",
+          "sw.js",
+          "config.example.js",
+          "css/**",
+          "js/**",
+          "assets/**"
+        ]
+      }
+    ],
     "mac": {
-      "category": "public.app-category.finance",
-      "target":   [{ "target": "dmg", "arch": ["x64", "arm64"] }]
+      "category":         "public.app-category.finance",
+      "icon":             "../assets/icon.png",
+      "hardenedRuntime":  true,
+      "gatekeeperAssess": false,
+      "darkModeSupport":  true,
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "dmg": {
+      "title":  "Property Tax Tracker ${version}",
+      "window": { "width": 540, "height": 380 }
     },
     "win": {
-      "target":   [{ "target": "nsis", "arch": ["x64"] }]
+      "icon":   "../assets/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick":                          false,
+      "perMachine":                        false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut":             true,
+      "createStartMenuShortcut":           true
+    },
+    "linux": {
+      "icon":     "../assets/icon.png",
+      "category": "Finance",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ]
     }
   },
   "devDependencies": {

@@ -4,4 +4,6 @@ electron/node_modules/
 dist/
 *.dmg
 *.exe
+*.AppImage
+*.deb
 .DS_Store
