@@ -1,0 +1,741 @@
+// Main app — routing, rendering, UI wiring
+// Pre-loaded properties (seeded into IndexedDB on first run if empty)
+const SEED_PROPERTIES = [
+  { id: 'prop-1', name: 'Milman Road',                  purchase_date: '', purchase_price: '', ownership_pct: 100 },
+  { id: 'prop-2', name: 'Annex, 79 Commonside, Sheffield', purchase_date: '', purchase_price: '', ownership_pct: 100 },
+  { id: 'prop-3', name: '29 Modling House, London',     purchase_date: '', purchase_price: '', ownership_pct: 100 },
+];
+
+// ─── Routing ─────────────────────────────────────────────────
+function navigateTo(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById(`page-${pageId}`);
+  if (page) page.classList.add('active');
+  const navBtn = document.querySelector(`.nav-item[data-page="${pageId}"]`);
+  if (navBtn) navBtn.classList.add('active');
+  // Scroll page content to top
+  document.getElementById('main-content')?.scrollTo(0, 0);
+}
+
+// ─── Toast ───────────────────────────────────────────────────
+function showToast(msg, type = '', duration = 2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast${type ? ' ' + type : ''}`;
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.className = 'toast hidden'; }, duration);
+}
+
+// ─── Format helpers ───────────────────────────────────────────
+function formatGBP(n) {
+  return '£' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ─── Property helpers ────────────────────────────────────────
+let _properties = [];
+
+async function loadProperties() {
+  _properties = await dbGetAll('properties');
+  if (_properties.length === 0) {
+    for (const p of SEED_PROPERTIES) { await dbPut('properties', p); }
+    _properties = SEED_PROPERTIES.slice();
+  }
+  populatePropertySelects();
+  return _properties;
+}
+
+function getPropertyName(id) {
+  return _properties.find(p => p.id === id)?.name || id;
+}
+
+function populatePropertySelects() {
+  document.querySelectorAll('select[name="property_id"], .filter-select').forEach(sel => {
+    if (sel.id && sel.id.includes('filter-property') || sel.id && !sel.id.includes('filter')) return;
+  });
+
+  const propertySelects = [
+    ...document.querySelectorAll('select[name="property_id"]'),
+  ];
+  propertySelects.forEach(sel => {
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Select property…</option>';
+    _properties.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  });
+
+  const filterSelects = document.querySelectorAll('.filter-select[id*="property"]');
+  filterSelects.forEach(sel => {
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All properties</option>';
+    _properties.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  });
+}
+
+function populateTaxYearSelects() {
+  const years = getTaxYearList();
+  const filterSelects = document.querySelectorAll('.filter-select[id*="year"]');
+  filterSelects.forEach(sel => {
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All years</option>';
+    years.forEach(y => {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  });
+}
+
+// ─── Dashboard ───────────────────────────────────────────────
+async function renderDashboard() {
+  const propFilter = document.getElementById('dash-filter-property')?.value;
+  const yearFilter = document.getElementById('dash-filter-year')?.value;
+
+  const [allIncome, allExpenses] = await Promise.all([
+    dbGetAll('income'),
+    dbGetAll('expenses'),
+  ]);
+
+  const income   = allIncome.filter(r =>
+    (!propFilter || r.property_id === propFilter) &&
+    (!yearFilter || r.tax_year === yearFilter)
+  );
+  const expenses = allExpenses.filter(r =>
+    (!propFilter || r.property_id === propFilter) &&
+    (!yearFilter || r.tax_year === yearFilter)
+  );
+
+  const totalIncome = income.reduce((s, r) => s + Number(r.amount), 0);
+
+  const mortgage      = expenses.filter(e => expenseType(e.category) === 'mortgage').reduce((s,e) => s+Number(e.amount),0);
+  const allowable     = expenses.filter(e => expenseType(e.category) === 'revenue').reduce((s,e) => s+Number(e.amount),0);
+  const uncategorised = expenses.filter(e => expenseType(e.category) === 'uncategorised');
+  const uncatTotal    = uncategorised.reduce((s,e) => s+Number(e.amount),0);
+  const categorised   = mortgage + allowable;
+  const netProfit     = totalIncome - allowable;
+  const credit        = mortgageTaxCredit(mortgage);
+
+  document.getElementById('dash-total-income').textContent       = formatGBP(totalIncome);
+  document.getElementById('dash-total-expenses').textContent     = formatGBP(categorised);
+  document.getElementById('dash-net-profit').textContent         = formatGBP(netProfit);
+  document.getElementById('dash-uncategorised-count').textContent = `${uncategorised.length} item${uncategorised.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('np-income').textContent    = formatGBP(totalIncome);
+  document.getElementById('np-allowable').textContent = `−${formatGBP(allowable)}`;
+  document.getElementById('np-profit').textContent    = formatGBP(netProfit);
+  document.getElementById('np-mortgage').textContent  = `−${formatGBP(mortgage)}`;
+  document.getElementById('np-credit').textContent    = formatGBP(credit);
+  document.getElementById('np-uncategorised').textContent = formatGBP(uncatTotal);
+
+  const uncatRow = document.getElementById('np-uncategorised-row');
+  if (uncatRow) uncatRow.style.display = uncatTotal > 0 ? '' : 'none';
+
+  // Income table
+  const incomeByType = {};
+  income.forEach(r => { incomeByType[r.type] = (incomeByType[r.type] || 0) + Number(r.amount); });
+  const incomeTableEl = document.getElementById('dash-income-table');
+  if (Object.keys(incomeByType).length === 0) {
+    incomeTableEl.innerHTML = '<p class="empty-state">No income recorded yet.</p>';
+  } else {
+    const rows = Object.entries(incomeByType).map(([type, amt]) =>
+      `<tr><td>${type}</td><td>${formatGBP(amt)}</td></tr>`).join('');
+    incomeTableEl.innerHTML = `<table><thead><tr><th>Type</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  // Expense table
+  const expByCategory = {};
+  expenses.forEach(r => { expByCategory[r.category] = (expByCategory[r.category] || 0) + Number(r.amount); });
+  const expTableEl = document.getElementById('dash-expense-table');
+  if (Object.keys(expByCategory).length === 0) {
+    expTableEl.innerHTML = '<p class="empty-state">No expenses recorded yet.</p>';
+  } else {
+    const rows = Object.entries(expByCategory).map(([cat, amt]) =>
+      `<tr><td>${cat}</td><td>${formatGBP(amt)}</td></tr>`).join('');
+    expTableEl.innerHTML = `<table><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+}
+
+// ─── Income ledger ────────────────────────────────────────────
+async function renderIncomeLedger() {
+  const propFilter = document.getElementById('income-filter-property')?.value;
+  const yearFilter = document.getElementById('income-filter-year')?.value;
+  const all = await dbGetAll('income');
+  const rows = all
+    .filter(r => (!propFilter || r.property_id === propFilter) && (!yearFilter || r.tax_year === yearFilter))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const el = document.getElementById('income-ledger');
+  if (rows.length === 0) {
+    el.innerHTML = '<p class="empty-state">No income recorded yet.</p>';
+    return;
+  }
+  el.innerHTML = rows.map(r => `
+    <div class="ledger-item">
+      <div class="ledger-item-header">
+        <span class="ledger-item-title">${getPropertyName(r.property_id)}</span>
+        <span class="ledger-item-amount income-amount">${formatGBP(r.amount)}</span>
+      </div>
+      <div class="ledger-item-meta">
+        <span class="ledger-item-date">${formatDate(r.date)}</span>
+        <span class="tag income">${r.type}</span>
+        ${r.tenant_ref ? `<span class="tag">${r.tenant_ref}</span>` : ''}
+        <span class="tag">${r.tax_year}</span>
+      </div>
+      ${r.notes ? `<div class="ledger-item-notes">${r.notes}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ─── Expense ledger ───────────────────────────────────────────
+async function renderExpenseLedger() {
+  const propFilter = document.getElementById('expense-filter-property')?.value;
+  const yearFilter = document.getElementById('expense-filter-year')?.value;
+  const catFilter  = document.getElementById('expense-filter-category')?.value;
+  const all = await dbGetAll('expenses');
+  const rows = all
+    .filter(r =>
+      (!propFilter || r.property_id === propFilter) &&
+      (!yearFilter || r.tax_year === yearFilter) &&
+      (!catFilter  || r.category  === catFilter)
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const el = document.getElementById('expense-ledger');
+  if (rows.length === 0) {
+    el.innerHTML = '<p class="empty-state">No expenses recorded yet.</p>';
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const type = expenseType(r.category);
+    const typeClass = type === 'uncategorised' ? 'uncategorised' : type === 'capital' ? 'capital' : type === 'non-allowable' ? 'non-allowable' : '';
+    const tagClass  = type === 'uncategorised' ? 'warn' : type === 'capital' ? 'capital' : '';
+    return `
+      <div class="ledger-item ${typeClass}">
+        <div class="ledger-item-header">
+          <span class="ledger-item-title">${getPropertyName(r.property_id)}</span>
+          <span class="ledger-item-amount">−${formatGBP(r.amount)}</span>
+        </div>
+        <div class="ledger-item-meta">
+          <span class="ledger-item-date">${formatDate(r.date)}</span>
+          <span class="tag ${tagClass}">${r.category}</span>
+          ${r.supplier ? `<span class="tag">${r.supplier}</span>` : ''}
+          <span class="tag">${r.tax_year}</span>
+        </div>
+        ${r.notes ? `<div class="ledger-item-notes">${r.notes}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── To Review ────────────────────────────────────────────────
+async function renderReviewList() {
+  const all = await dbGetAll('expenses');
+  const pending = all.filter(e => expenseType(e.category) === 'uncategorised')
+                     .sort((a, b) => a.date.localeCompare(b.date));
+
+  // Update badge
+  const badge = document.getElementById('review-badge');
+  if (badge) {
+    badge.textContent = pending.length;
+    badge.classList.toggle('hidden', pending.length === 0);
+  }
+
+  const el = document.getElementById('review-list');
+  if (pending.length === 0) {
+    el.innerHTML = '<p class="empty-state success-state">All expenses are categorised.</p>';
+    return;
+  }
+
+  const categoryOptions = `
+    <option value="Uncategorised">Uncategorised — to review later</option>
+    <optgroup label="Revenue (tax deductible)">
+      <option value="Mortgage interest">Mortgage interest</option>
+      <option value="Insurance">Insurance</option>
+      <option value="Letting agent / advertising">Letting agent / advertising</option>
+      <option value="Repairs &amp; maintenance">Repairs &amp; maintenance</option>
+      <option value="Utilities">Utilities</option>
+      <option value="Professional fees">Professional fees</option>
+      <option value="Replacement furnishings">Replacement furnishings</option>
+      <option value="Mileage">Mileage</option>
+      <option value="Other allowable">Other allowable</option>
+    </optgroup>
+    <optgroup label="Capital (CGT relevant)">
+      <option value="Improvements">Improvements</option>
+    </optgroup>
+    <optgroup label="Not deductible">
+      <option value="Personal / non-allowable">Personal / non-allowable</option>
+    </optgroup>
+  `;
+
+  el.innerHTML = pending.map(r => `
+    <div class="review-item" data-id="${r.id}">
+      <div class="review-item-header">
+        <span class="review-item-title">${getPropertyName(r.property_id)}${r.supplier ? ' — ' + r.supplier : ''}</span>
+        <span class="review-item-amount">−${formatGBP(r.amount)}</span>
+      </div>
+      <div class="review-item-date">${formatDate(r.date)}</div>
+      <select class="review-category-select" data-expense-id="${r.id}">${categoryOptions}</select>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.review-category-select').forEach(sel => {
+    sel.addEventListener('change', async (e) => {
+      const id = e.target.dataset.expenseId;
+      const cat = e.target.value;
+      if (cat === 'Uncategorised') return;
+      const record = await dbGet('expenses', id);
+      if (!record) return;
+      record.category = cat;
+      await dbPut('expenses', record);
+      showToast('Categorised ✓', 'success');
+      await renderReviewList();
+      renderDashboard();
+    });
+  });
+}
+
+// ─── CGT ─────────────────────────────────────────────────────
+async function renderCGT() {
+  const cgtRecords = await dbGetAll('cgt');
+  const el = document.getElementById('cgt-properties');
+
+  if (_properties.length === 0) {
+    el.innerHTML = '<p class="empty-state">No properties found.</p>';
+    return;
+  }
+
+  el.innerHTML = _properties.map(prop => {
+    const records = cgtRecords.filter(r => r.property_id === prop.id);
+    const total   = records.reduce((s, r) => s + Number(r.amount), 0);
+
+    const rowsHtml = records.length === 0
+      ? '<div class="cgt-row"><span>No entries yet</span><span>—</span></div>'
+      : records.map(r => `
+          <div class="cgt-row">
+            <span>${r.category}${r.description ? ` — ${r.description}` : ''}</span>
+            <span>${formatGBP(r.amount)}</span>
+          </div>`).join('');
+
+    return `
+      <div class="cgt-property-card">
+        <div class="cgt-property-name">${prop.name}</div>
+        ${rowsHtml}
+        <div class="cgt-row cgt-total">
+          <span>Cost base total</span>
+          <span>${formatGBP(total)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── Properties screen ────────────────────────────────────────
+async function renderPropertyList() {
+  const el = document.getElementById('property-list');
+  if (_properties.length === 0) {
+    el.innerHTML = '<p class="empty-state">No properties added yet.</p>';
+    return;
+  }
+  el.innerHTML = _properties.map(p => `
+    <div class="property-card">
+      <div class="property-card-info">
+        <div class="property-card-name">${p.name}</div>
+        <div class="property-card-meta">
+          ${p.purchase_date ? `Purchased ${formatDate(p.purchase_date)}` : 'No purchase date'}
+          ${p.purchase_price ? ` · ${formatGBP(p.purchase_price)}` : ''}
+          ${p.ownership_pct != null ? ` · ${p.ownership_pct}% ownership` : ''}
+        </div>
+      </div>
+      <div class="property-card-actions">
+        <button class="btn btn-secondary btn-sm" data-edit-prop="${p.id}">Edit</button>
+        <button class="btn btn-danger btn-sm" data-delete-prop="${p.id}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-edit-prop]').forEach(btn => {
+    btn.addEventListener('click', () => openPropertyForm(btn.dataset.editProp));
+  });
+  el.querySelectorAll('[data-delete-prop]').forEach(btn => {
+    btn.addEventListener('click', () => deleteProperty(btn.dataset.deleteProp));
+  });
+}
+
+function openPropertyForm(id) {
+  const panel = document.getElementById('property-form-panel');
+  const form  = document.getElementById('property-form');
+  panel.classList.remove('hidden');
+  form.reset();
+  if (id) {
+    const p = _properties.find(x => x.id === id);
+    if (p) {
+      form.id.value             = p.id;
+      form.name.value           = p.name;
+      form.purchase_date.value  = p.purchase_date || '';
+      form.purchase_price.value = p.purchase_price || '';
+      form.ownership_pct.value  = p.ownership_pct ?? 100;
+    }
+  }
+}
+
+async function deleteProperty(id) {
+  if (!confirm('Delete this property? All associated records will remain.')) return;
+  await dbDelete('properties', id);
+  _properties = _properties.filter(p => p.id !== id);
+  populatePropertySelects();
+  renderPropertyList();
+  showToast('Property deleted', 'warn');
+}
+
+// ─── Form: income ─────────────────────────────────────────────
+function initIncomeForm() {
+  const btn    = document.getElementById('btn-add-income');
+  const panel  = document.getElementById('income-form-panel');
+  const form   = document.getElementById('income-form');
+  const cancel = document.getElementById('btn-cancel-income');
+
+  btn.addEventListener('click', () => {
+    panel.classList.remove('hidden');
+    form.reset();
+    form.date.value = new Date().toISOString().slice(0, 10);
+  });
+
+  cancel.addEventListener('click', () => panel.classList.add('hidden'));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const record = {
+      id:          generateId(),
+      property_id: fd.get('property_id'),
+      date:        fd.get('date'),
+      tax_year:    getTaxYear(fd.get('date')),
+      amount:      parseFloat(fd.get('amount')),
+      type:        fd.get('type'),
+      tenant_ref:  fd.get('tenant_ref'),
+      receipt_ref: fd.get('receipt_ref'),
+      notes:       fd.get('notes'),
+    };
+    await dbPut('income', record);
+    panel.classList.add('hidden');
+    form.reset();
+    await renderIncomeLedger();
+    renderDashboard();
+    showToast('Income saved ✓', 'success');
+  });
+}
+
+// ─── Form: expense ────────────────────────────────────────────
+function initExpenseForm() {
+  const btn    = document.getElementById('btn-add-expense');
+  const panel  = document.getElementById('expense-form-panel');
+  const form   = document.getElementById('expense-form');
+  const cancel = document.getElementById('btn-cancel-expense');
+  const cameraBtn   = document.getElementById('btn-camera');
+  const cameraInput = document.getElementById('camera-input');
+
+  btn.addEventListener('click', () => {
+    panel.classList.remove('hidden');
+    form.reset();
+    form.date.value = new Date().toISOString().slice(0, 10);
+  });
+
+  cancel.addEventListener('click', () => panel.classList.add('hidden'));
+
+  cameraBtn.addEventListener('click', () => cameraInput.click());
+  cameraInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ref = await uploadReceipt(file, `receipt-${Date.now()}`);
+    const refInput = document.getElementById('expense-receipt-ref');
+    if (ref) refInput.value = ref;
+    else refInput.value = file.name;
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const record = {
+      id:          generateId(),
+      property_id: fd.get('property_id'),
+      date:        fd.get('date'),
+      tax_year:    getTaxYear(fd.get('date')),
+      amount:      parseFloat(fd.get('amount')),
+      category:    fd.get('category'),
+      supplier:    fd.get('supplier'),
+      receipt_ref: fd.get('receipt_ref'),
+      notes:       fd.get('notes'),
+      is_capital:  fd.get('category') === 'Improvements' ? 1 : 0,
+      status:      'active',
+    };
+    await dbPut('expenses', record);
+    panel.classList.add('hidden');
+    form.reset();
+    await renderExpenseLedger();
+    await renderReviewList();
+    renderDashboard();
+    showToast('Expense saved ✓', 'success');
+  });
+}
+
+// ─── Form: property ───────────────────────────────────────────
+function initPropertyForm() {
+  const btn    = document.getElementById('btn-add-property');
+  const panel  = document.getElementById('property-form-panel');
+  const form   = document.getElementById('property-form');
+  const cancel = document.getElementById('btn-cancel-property');
+
+  btn.addEventListener('click', () => {
+    panel.classList.remove('hidden');
+    form.reset();
+    form.ownership_pct.value = 100;
+    form.id.value = '';
+  });
+
+  cancel.addEventListener('click', () => panel.classList.add('hidden'));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const id = fd.get('id') || generateId();
+    const record = {
+      id,
+      name:           fd.get('name'),
+      purchase_date:  fd.get('purchase_date'),
+      purchase_price: fd.get('purchase_price') ? parseFloat(fd.get('purchase_price')) : '',
+      ownership_pct:  fd.get('ownership_pct') ? parseFloat(fd.get('ownership_pct')) : 100,
+    };
+    await dbPut('properties', record);
+    const idx = _properties.findIndex(p => p.id === id);
+    if (idx >= 0) _properties[idx] = record;
+    else _properties.push(record);
+    panel.classList.add('hidden');
+    form.reset();
+    populatePropertySelects();
+    await renderPropertyList();
+    showToast('Property saved ✓', 'success');
+  });
+}
+
+// ─── Export / import ─────────────────────────────────────────
+async function exportJSON() {
+  const [properties, income, expenses, cgt, gmailScan] = await Promise.all([
+    dbGetAll('properties'),
+    dbGetAll('income'),
+    dbGetAll('expenses'),
+    dbGetAll('cgt'),
+    dbGetAll('gmailScan'),
+  ]);
+  const data = { properties, income, expenses, cgt, gmailScan, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `property-tracker-backup-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Export downloaded ✓', 'success');
+}
+
+async function importJSON(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const stores = ['properties', 'income', 'expenses', 'cgt', 'gmailScan'];
+    for (const store of stores) {
+      if (Array.isArray(data[store])) {
+        for (const record of data[store]) { await dbPut(store, record); }
+      }
+    }
+    _properties = await dbGetAll('properties');
+    populatePropertySelects();
+    renderPropertyList();
+    renderDashboard();
+    showToast(`Import complete ✓`, 'success');
+  } catch (err) {
+    showToast('Import failed — invalid JSON', 'error');
+  }
+}
+
+// ─── Gmail results ────────────────────────────────────────────
+async function renderGmailResults(results) {
+  const el = document.getElementById('gmail-results');
+  if (!results || results.length === 0) {
+    el.innerHTML = '<p class="empty-state">No new receipts found.</p>';
+    return;
+  }
+  el.innerHTML = results.map(r => `
+    <div class="gmail-result-item" data-msg-id="${r.gmail_message_id}">
+      <div class="gmail-result-subject">${r.subject}</div>
+      <div class="gmail-result-meta">${r.suggested_supplier} · ${formatDate(r.date)}</div>
+      ${r.suggested_amount ? `<div class="gmail-result-amount">${formatGBP(r.suggested_amount)}</div>` : ''}
+      <div class="gmail-result-actions">
+        <button class="btn btn-primary btn-sm" data-approve="${r.gmail_message_id}">Approve</button>
+        <button class="btn btn-ghost btn-sm" data-dismiss="${r.gmail_message_id}">Dismiss</button>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const msgId = btn.dataset.approve;
+      const item  = results.find(r => r.gmail_message_id === msgId);
+      if (!item) return;
+      const expenseId = generateId();
+      const expense = {
+        id: expenseId,
+        property_id: '',
+        date:        item.date,
+        tax_year:    getTaxYear(item.date),
+        amount:      item.suggested_amount || 0,
+        category:    'Uncategorised',
+        supplier:    item.suggested_supplier || '',
+        receipt_ref: '',
+        notes:       item.subject,
+        is_capital:  0,
+        status:      'active',
+      };
+      await dbPut('expenses', expense);
+      const scanRecord = {
+        id: generateId(),
+        gmail_message_id:  msgId,
+        date:              item.date,
+        subject:           item.subject,
+        suggested_supplier: item.suggested_supplier,
+        suggested_amount:  item.suggested_amount,
+        status:            'approved',
+        linked_expense_id: expenseId,
+      };
+      await dbPut('gmailScan', scanRecord);
+      btn.closest('.gmail-result-item').remove();
+      await renderReviewList();
+      showToast('Added as expense ✓', 'success');
+    });
+  });
+
+  el.querySelectorAll('[data-dismiss]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const msgId = btn.dataset.dismiss;
+      const item  = results.find(r => r.gmail_message_id === msgId);
+      const scanRecord = {
+        id: generateId(),
+        gmail_message_id: msgId,
+        date:    item?.date || '',
+        subject: item?.subject || '',
+        status:  'dismissed',
+        linked_expense_id: '',
+      };
+      await dbPut('gmailScan', scanRecord);
+      btn.closest('.gmail-result-item').remove();
+    });
+  });
+}
+
+// ─── Init ─────────────────────────────────────────────────────
+async function init() {
+  // Check for missing config
+  if (window.__configMissing) {
+    console.warn('config.js not found — copy config.example.js to config.js and fill in your credentials');
+  }
+
+  initSync();
+
+  // For now, skip auth and go straight to app shell (Phase 2 will wire up real auth)
+  document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-app').classList.add('active');
+
+  await loadProperties();
+  populateTaxYearSelects();
+
+  // Nav routing
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => navigateTo(btn.dataset.page));
+  });
+
+  // Dashboard filters
+  document.getElementById('dash-filter-property')?.addEventListener('change', renderDashboard);
+  document.getElementById('dash-filter-year')?.addEventListener('change', renderDashboard);
+
+  // Income filters
+  document.getElementById('income-filter-property')?.addEventListener('change', renderIncomeLedger);
+  document.getElementById('income-filter-year')?.addEventListener('change', renderIncomeLedger);
+
+  // Expense filters
+  document.getElementById('expense-filter-property')?.addEventListener('change', renderExpenseLedger);
+  document.getElementById('expense-filter-year')?.addEventListener('change', renderExpenseLedger);
+  document.getElementById('expense-filter-category')?.addEventListener('change', renderExpenseLedger);
+
+  // Forms
+  initIncomeForm();
+  initExpenseForm();
+  initPropertyForm();
+
+  // Sign-out (stub until Phase 2)
+  document.getElementById('btn-signout')?.addEventListener('click', () => {
+    signOut();
+    document.getElementById('screen-app').classList.remove('active');
+    document.getElementById('screen-login').classList.add('active');
+  });
+
+  // Sign-in
+  document.getElementById('btn-signin')?.addEventListener('click', signIn);
+
+  // Export / import
+  document.getElementById('btn-export')?.addEventListener('click', exportJSON);
+  const importBtn   = document.getElementById('btn-import');
+  const importInput = document.getElementById('import-input');
+  importBtn?.addEventListener('click', () => importInput.click());
+  importInput?.addEventListener('change', (e) => {
+    if (e.target.files[0]) importJSON(e.target.files[0]);
+  });
+
+  // Gmail scan button
+  document.getElementById('btn-scan-gmail')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-scan-gmail');
+    btn.disabled = true;
+    btn.textContent = 'Scanning…';
+    try {
+      const results = await scanGmail();
+      await renderGmailResults(results);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Scan Inbox';
+    }
+  });
+
+  // Offline banner
+  const banner = document.getElementById('offline-banner');
+  window.addEventListener('online',  () => banner.classList.add('hidden'));
+  window.addEventListener('offline', () => banner.classList.remove('hidden'));
+  if (!navigator.onLine) banner.classList.remove('hidden');
+
+  // Initial renders
+  await renderDashboard();
+  await renderIncomeLedger();
+  await renderExpenseLedger();
+  await renderReviewList();
+  await renderCGT();
+  await renderPropertyList();
+}
+
+document.addEventListener('DOMContentLoaded', init);

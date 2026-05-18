@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="description" content="Track rental income, expenses and CGT across multiple properties" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PropTax" />
+  <title>Property Tax Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Login screen -->
+  <div id="screen-login" class="screen active">
+    <div class="login-container">
+      <div class="login-logo">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="16" fill="#4f46e5"/>
+          <path d="M32 12L14 24V52H26V38H38V52H50V24L32 12Z" fill="white"/>
+          <rect x="27" y="28" width="10" height="10" rx="1" fill="#4f46e5"/>
+        </svg>
+      </div>
+      <h1>Property Tax Tracker</h1>
+      <p class="login-subtitle">Track rental income, expenses &amp; CGT<br>across your UK properties</p>
+      <button id="btn-signin" class="btn btn-primary btn-large">
+        <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 20-9 20-20 0-1.3-.1-2.7-.4-4z"/>
+          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+          <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.2 0-9.7-2.8-11.4-7.2l-6.5 5C9.5 39.7 16.2 44 24 44z"/>
+          <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.9 2.5-2.5 4.6-4.6 6l6.2 5.2C40.1 36.1 44 30.6 44 24c0-1.3-.1-2.7-.4-4z"/>
+        </svg>
+        Sign in with Google
+      </button>
+      <p class="login-note">Requires access to Google Sheets, Drive &amp; Gmail</p>
+    </div>
+  </div>
+
+  <!-- Main app shell (hidden until authenticated) -->
+  <div id="screen-app" class="screen">
+
+    <!-- Top nav bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <svg class="header-logo" width="28" height="28" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="16" fill="#4f46e5"/>
+          <path d="M32 12L14 24V52H26V38H38V52H50V24L32 12Z" fill="white"/>
+          <rect x="27" y="28" width="10" height="10" rx="1" fill="#4f46e5"/>
+        </svg>
+        <span class="header-title">Property Tax Tracker</span>
+      </div>
+      <div class="header-right">
+        <span id="sync-indicator" class="sync-indicator synced" title="All synced">
+          <span class="sync-dot"></span>
+          <span class="sync-label">Synced</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Page content area -->
+    <main id="main-content" class="main-content">
+
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <div class="filters">
+            <select id="dash-filter-property" class="filter-select">
+              <option value="">All properties</option>
+            </select>
+            <select id="dash-filter-year" class="filter-select">
+              <option value="">All years</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Total Income</div>
+            <div class="metric-value" id="dash-total-income">£0</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Categorised Expenses</div>
+            <div class="metric-value" id="dash-total-expenses">£0</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Net Profit</div>
+            <div class="metric-value" id="dash-net-profit">£0</div>
+          </div>
+          <div class="metric-card metric-warn">
+            <div class="metric-label">Uncategorised</div>
+            <div class="metric-value" id="dash-uncategorised-count">0 items</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Net Tax Position</h3>
+          <div class="net-position" id="dash-net-position">
+            <div class="net-row">
+              <span>Rental income</span>
+              <span id="np-income">£0</span>
+            </div>
+            <div class="net-row">
+              <span>Other allowable expenses</span>
+              <span id="np-allowable">−£0</span>
+            </div>
+            <div class="net-row net-subtotal">
+              <span>Net profit before mortgage relief</span>
+              <span id="np-profit">£0</span>
+            </div>
+            <div class="net-row">
+              <span>Mortgage interest paid</span>
+              <span id="np-mortgage">−£0</span>
+            </div>
+            <div class="net-row net-credit">
+              <span>20% mortgage interest tax credit</span>
+              <span id="np-credit">£0</span>
+            </div>
+            <div class="net-row net-warn" id="np-uncategorised-row">
+              <span>⚠ Uncategorised (excluded)</span>
+              <span id="np-uncategorised">£0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Income Breakdown</h3>
+          <div id="dash-income-table" class="data-table-wrapper">
+            <p class="empty-state">No income recorded yet.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Expenses by Category</h3>
+          <div id="dash-expense-table" class="data-table-wrapper">
+            <p class="empty-state">No expenses recorded yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Income -->
+      <section id="page-income" class="page">
+        <div class="page-header">
+          <h2>Income</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-income">+ Add Income</button>
+        </div>
+
+        <div id="income-form-panel" class="form-panel hidden">
+          <h3>Add Income</h3>
+          <form id="income-form">
+            <div class="form-row">
+              <label>Property</label>
+              <select name="property_id" required>
+                <option value="">Select property…</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Date</label>
+              <input type="date" name="date" required />
+            </div>
+            <div class="form-row">
+              <label>Amount (£)</label>
+              <input type="number" name="amount" step="0.01" min="0" required />
+            </div>
+            <div class="form-row">
+              <label>Type</label>
+              <select name="type" required>
+                <option value="Rental income">Rental income</option>
+                <option value="Deposit received">Deposit received</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Tenant ref</label>
+              <input type="text" name="tenant_ref" />
+            </div>
+            <div class="form-row">
+              <label>Receipt ref</label>
+              <input type="text" name="receipt_ref" />
+            </div>
+            <div class="form-row">
+              <label>Notes</label>
+              <textarea name="notes" rows="2"></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn btn-ghost" id="btn-cancel-income">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="filters">
+          <select id="income-filter-property" class="filter-select">
+            <option value="">All properties</option>
+          </select>
+          <select id="income-filter-year" class="filter-select">
+            <option value="">All years</option>
+          </select>
+        </div>
+
+        <div id="income-ledger" class="ledger">
+          <p class="empty-state">No income recorded yet.</p>
+        </div>
+      </section>
+
+      <!-- Expenses -->
+      <section id="page-expenses" class="page">
+        <div class="page-header">
+          <h2>Expenses</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-expense">+ Add Expense</button>
+        </div>
+
+        <div id="expense-form-panel" class="form-panel hidden">
+          <h3>Add Expense</h3>
+          <form id="expense-form">
+            <div class="form-row">
+              <label>Property</label>
+              <select name="property_id" required>
+                <option value="">Select property…</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Date</label>
+              <input type="date" name="date" required />
+            </div>
+            <div class="form-row">
+              <label>Amount (£)</label>
+              <input type="number" name="amount" step="0.01" min="0" required />
+            </div>
+            <div class="form-row">
+              <label>Category</label>
+              <select name="category" required>
+                <option value="Uncategorised">Uncategorised — to review later</option>
+                <optgroup label="Revenue (tax deductible)">
+                  <option value="Mortgage interest">Mortgage interest</option>
+                  <option value="Insurance">Insurance</option>
+                  <option value="Letting agent / advertising">Letting agent / advertising</option>
+                  <option value="Repairs &amp; maintenance">Repairs &amp; maintenance</option>
+                  <option value="Utilities">Utilities</option>
+                  <option value="Professional fees">Professional fees</option>
+                  <option value="Replacement furnishings">Replacement furnishings</option>
+                  <option value="Mileage">Mileage</option>
+                  <option value="Other allowable">Other allowable</option>
+                </optgroup>
+                <optgroup label="Capital (CGT relevant)">
+                  <option value="Improvements">Improvements</option>
+                </optgroup>
+                <optgroup label="Not deductible">
+                  <option value="Personal / non-allowable">Personal / non-allowable</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Supplier</label>
+              <input type="text" name="supplier" />
+            </div>
+            <div class="form-row">
+              <label>Receipt</label>
+              <div class="receipt-input-group">
+                <input type="text" name="receipt_ref" id="expense-receipt-ref" placeholder="Ref or filename" />
+                <button type="button" class="btn btn-icon" id="btn-camera" title="Take photo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </button>
+              </div>
+              <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" />
+            </div>
+            <div class="form-row">
+              <label>Notes</label>
+              <textarea name="notes" rows="2"></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn btn-ghost" id="btn-cancel-expense">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="filters">
+          <select id="expense-filter-property" class="filter-select">
+            <option value="">All properties</option>
+          </select>
+          <select id="expense-filter-year" class="filter-select">
+            <option value="">All years</option>
+          </select>
+          <select id="expense-filter-category" class="filter-select">
+            <option value="">All categories</option>
+          </select>
+        </div>
+
+        <div id="expense-ledger" class="ledger">
+          <p class="empty-state">No expenses recorded yet.</p>
+        </div>
+      </section>
+
+      <!-- To Review -->
+      <section id="page-review" class="page">
+        <div class="page-header">
+          <h2>To Review</h2>
+        </div>
+        <div id="review-list" class="ledger">
+          <p class="empty-state success-state">All expenses are categorised.</p>
+        </div>
+      </section>
+
+      <!-- CGT -->
+      <section id="page-cgt" class="page">
+        <div class="page-header">
+          <h2>CGT Capital Account</h2>
+        </div>
+        <p class="cgt-note card">Keep these records permanently — they reduce your taxable gain on sale.</p>
+        <div id="cgt-properties" class="cgt-container">
+          <p class="empty-state">No properties found.</p>
+        </div>
+      </section>
+
+      <!-- Gmail Scanner -->
+      <section id="page-gmail" class="page">
+        <div class="page-header">
+          <h2>Gmail Scanner</h2>
+          <button class="btn btn-primary btn-sm" id="btn-scan-gmail">Scan Inbox</button>
+        </div>
+        <p class="scan-note">Scans for receipts, invoices and payment confirmations. Approved items become Uncategorised expenses.</p>
+        <div id="gmail-results" class="ledger">
+          <p class="empty-state">Press "Scan Inbox" to search for receipts.</p>
+        </div>
+      </section>
+
+      <!-- Properties -->
+      <section id="page-properties" class="page">
+        <div class="page-header">
+          <h2>Properties</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-property">+ Add Property</button>
+        </div>
+
+        <div id="property-form-panel" class="form-panel hidden">
+          <h3>Add / Edit Property</h3>
+          <form id="property-form">
+            <input type="hidden" name="id" />
+            <div class="form-row">
+              <label>Property name</label>
+              <input type="text" name="name" required />
+            </div>
+            <div class="form-row">
+              <label>Purchase date</label>
+              <input type="date" name="purchase_date" />
+            </div>
+            <div class="form-row">
+              <label>Purchase price (£)</label>
+              <input type="number" name="purchase_price" step="0.01" min="0" />
+            </div>
+            <div class="form-row">
+              <label>Ownership %</label>
+              <input type="number" name="ownership_pct" step="0.1" min="0" max="100" value="100" />
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn btn-ghost" id="btn-cancel-property">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="property-list" class="property-list">
+          <p class="empty-state">No properties added yet.</p>
+        </div>
+
+        <div class="card properties-actions">
+          <h3>Data</h3>
+          <div class="action-row">
+            <button class="btn btn-secondary" id="btn-export">Export JSON backup</button>
+            <button class="btn btn-secondary" id="btn-import">Import JSON</button>
+            <input type="file" id="import-input" accept=".json" class="hidden" />
+          </div>
+          <div class="action-row action-row--danger">
+            <button class="btn btn-danger" id="btn-signout">Sign out</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom navigation -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-page="dashboard">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+        </svg>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="income">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="19" x2="12" y2="5"/>
+          <polyline points="5 12 12 5 19 12"/>
+        </svg>
+        <span>Income</span>
+      </button>
+      <button class="nav-item" data-page="expenses">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <polyline points="19 12 12 19 5 12"/>
+        </svg>
+        <span>Expenses</span>
+      </button>
+      <button class="nav-item" data-page="review">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        <span>Review</span>
+        <span id="review-badge" class="badge hidden">0</span>
+      </button>
+      <button class="nav-item" data-page="cgt">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+        <span>CGT</span>
+      </button>
+      <button class="nav-item" data-page="gmail">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+        <span>Gmail</span>
+      </button>
+      <button class="nav-item" data-page="properties">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span>Properties</span>
+      </button>
+    </nav>
+
+  </div><!-- /#screen-app -->
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Offline fallback banner -->
+  <div id="offline-banner" class="offline-banner hidden">
+    You're offline — changes will sync when reconnected
+  </div>
+
+  <!-- JS modules -->
+  <script src="config.js" onerror="window.__configMissing=true"></script>
+  <script src="js/tax.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/sheets.js"></script>
+  <script src="js/drive.js"></script>
+  <script src="js/gmail.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>
