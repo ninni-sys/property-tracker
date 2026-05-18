@@ -402,8 +402,63 @@
       <section id="page-cgt" class="page">
         <div class="page-header">
           <h2>CGT Capital Account</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-cgt">+ Add Entry</button>
         </div>
-        <p class="cgt-note card">Keep these records permanently — they reduce your taxable gain on sale.</p>
+
+        <div class="card cgt-explainer">
+          <p>Record every cost you incur buying, improving, or selling each property. These amounts reduce your taxable gain on disposal and must be kept <strong>permanently</strong> — even after the property is sold.</p>
+          <p class="cgt-explainer-hint">Enter amounts at <em>your ownership share</em> (e.g. 50% of £10,000 = £5,000).</p>
+        </div>
+
+        <div id="cgt-form-panel" class="form-panel hidden">
+          <h3 id="cgt-form-title">Add CGT Entry</h3>
+          <form id="cgt-form" novalidate>
+            <input type="hidden" name="id" />
+            <div class="form-row">
+              <label>Property <span class="required">*</span></label>
+              <select name="property_id" id="cgt-property-select">
+                <option value="">Select property…</option>
+              </select>
+              <span class="field-error hidden" data-field="cgt-property">Please select a property.</span>
+            </div>
+            <div class="form-row">
+              <label>Category <span class="required">*</span></label>
+              <select name="category" id="cgt-category-select">
+                <option value="Purchase price">Purchase price</option>
+                <option value="Stamp duty (SDLT)">Stamp duty (SDLT)</option>
+                <option value="Legal fees (purchase)">Legal fees (purchase)</option>
+                <option value="Mortgage arrangement fee">Mortgage arrangement fee</option>
+                <option value="Survey fees">Survey fees</option>
+                <option value="Initial furnishings (new let)">Initial furnishings (new let)</option>
+                <option value="Capital improvement">Capital improvement</option>
+                <option value="Legal fees (sale)">Legal fees (sale)</option>
+                <option value="Other acquisition cost">Other acquisition cost</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Description</label>
+              <input type="text" name="description" placeholder="e.g. Jones &amp; Co solicitors" />
+            </div>
+            <div class="form-row">
+              <label>Amount (£) <span class="required">*</span></label>
+              <input type="number" name="amount" id="cgt-amount" step="0.01" min="0.01" placeholder="0.00" />
+              <span class="field-error hidden" data-field="cgt-amount">Please enter an amount.</span>
+            </div>
+            <div class="form-row">
+              <label>Date</label>
+              <input type="date" name="date" />
+            </div>
+            <div class="form-row">
+              <label>Notes</label>
+              <textarea name="notes" rows="2" placeholder="Optional"></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" id="cgt-submit-btn">Save entry</button>
+              <button type="button" class="btn btn-ghost" id="btn-cancel-cgt">Cancel</button>
+            </div>
+          </form>
+        </div>
+
         <div id="cgt-properties" class="cgt-container">
           <p class="empty-state">No properties found.</p>
         </div>

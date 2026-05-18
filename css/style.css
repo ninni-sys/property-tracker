@@ -848,11 +848,16 @@ textarea { resize: vertical; min-height: 64px; }
 .action-row--danger { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
 
 /* ─── CGT ───────────────────────────────────────────────────── */
-.cgt-note {
+.cgt-explainer {
   font-size: .85rem;
   color: var(--text-muted);
-  font-style: italic;
+  line-height: 1.6;
+  margin-bottom: 16px;
 }
+
+.cgt-explainer p + p { margin-top: 6px; }
+
+.cgt-explainer-hint { font-style: italic; font-size: .8rem; }
 
 .cgt-container { display: flex; flex-direction: column; gap: 16px; }
 
@@ -863,27 +868,178 @@ textarea { resize: vertical; min-height: 64px; }
   padding: 16px;
 }
 
+/* Card header: name + badge + action buttons */
+.cgt-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
 .cgt-property-name {
   font-weight: 700;
   font-size: 1rem;
-  margin-bottom: 12px;
 }
 
-.cgt-row {
+.cgt-property-address {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.cgt-card-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cgt-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Entries list */
+.cgt-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.cgt-empty {
+  font-size: .82rem;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.cgt-entry-row {
   display: flex;
   justify-content: space-between;
-  font-size: .875rem;
-  padding: 6px 0;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+}
+
+.cgt-entry-row:last-child { border-bottom: none; }
+
+.cgt-entry-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  flex: 1;
+}
+
+.cgt-entry-category { font-weight: 500; }
+
+.cgt-entry-desc  { color: var(--text-muted); font-size: .8rem; }
+.cgt-entry-date  { color: var(--text-dim);   font-size: .75rem; }
+
+.cgt-entry-imported {
+  font-size: .65rem;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: rgba(79,70,229,.15);
+  color: var(--primary-light);
+  border: 1px solid rgba(79,70,229,.3);
+}
+
+.cgt-entry-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.cgt-entry-amount { font-weight: 600; white-space: nowrap; }
+
+.cgt-entry-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.cgt-entry-row:hover .cgt-entry-actions { opacity: 1; }
+
+@media (hover: none) { .cgt-entry-actions { opacity: 1; } }
+
+/* Cost base total bar */
+.cgt-cost-base-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: .9rem;
+  padding: 10px 0 0;
+  border-top: 2px solid var(--border);
+  margin-top: 4px;
+}
+
+.cgt-cost-base-value { color: var(--accent); font-size: 1.05rem; }
+
+/* Gain calculator */
+.cgt-gain-calc {
+  margin-top: 16px;
+  border-top: 1px dashed var(--border);
+  padding-top: 14px;
+}
+
+.cgt-gain-heading {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.cgt-gain-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: .85rem;
+  padding: 5px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.cgt-row:last-child { border-bottom: none; }
+.cgt-gain-row:last-child { border-bottom: none; }
 
-.cgt-total {
+.cgt-gain-deduction span:last-child { color: var(--danger); }
+
+.cgt-gain-subtotal {
+  font-weight: 600;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.cgt-gain-loss span:last-child { color: var(--danger); }
+
+.cgt-gain-total {
   font-weight: 700;
-  padding-top: 10px;
   border-top: 2px solid var(--border);
-  border-bottom: none;
+  padding-top: 8px;
+}
+
+.cgt-gain-total span:last-child { color: var(--primary-light); }
+
+.cgt-gain-higher { color: var(--text-muted); }
+
+.cgt-gain-note {
+  font-size: .72rem;
+  color: var(--text-dim);
+  margin-top: 10px;
+  line-height: 1.5;
+  font-style: italic;
 }
 
 /* ─── Gmail scanner ─────────────────────────────────────────── */

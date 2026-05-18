@@ -613,8 +613,14 @@ async function renderReviewList() {
 }
 
 // ─── CGT ─────────────────────────────────────────────────────
+// ─── CGT ─────────────────────────────────────────────────────
+const CGT_ANNUAL_EXEMPTION = 3000; // 2024/25 and beyond
+
 async function renderCGT() {
-  const cgtRecords = await dbGetAll('cgt');
+  const [cgtRecords, allExpenses] = await Promise.all([
+    dbGetAll('cgt'),
+    dbGetAll('expenses'),
+  ]);
   const el = document.getElementById('cgt-properties');
 
   if (_properties.length === 0) {
@@ -623,28 +629,268 @@ async function renderCGT() {
   }
 
   el.innerHTML = _properties.map(prop => {
-    const records = cgtRecords.filter(r => r.property_id === prop.id);
-    const total   = records.reduce((s, r) => s + Number(r.amount), 0);
+    const records  = cgtRecords.filter(r => r.property_id === prop.id)
+                               .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const costBase = records.reduce((s, r) => s + Number(r.amount), 0);
+    const status   = prop.status || 'active';
+    const statusLabel = { active: 'Active', vacant: 'Vacant', sold: 'Sold' }[status] || status;
 
-    const rowsHtml = records.length === 0
-      ? '<div class="cgt-row"><span>No entries yet</span><span>—</span></div>'
+    // Unimported capital improvements for this property
+    const importedIds = new Set(records.map(r => r.source_expense_id).filter(Boolean));
+    const unimported  = allExpenses.filter(e =>
+      e.property_id === prop.id &&
+      e.category    === 'Improvements' &&
+      !importedIds.has(e.id)
+    );
+
+    const entriesHtml = records.length === 0
+      ? '<p class="cgt-empty">No entries yet — use "+ Add Entry" or import from Expenses.</p>'
       : records.map(r => `
-          <div class="cgt-row">
-            <span>${r.category}${r.description ? ` — ${r.description}` : ''}</span>
-            <span>${formatGBP(r.amount)}</span>
+          <div class="cgt-entry-row">
+            <div class="cgt-entry-info">
+              <span class="cgt-entry-category">${r.category}</span>
+              ${r.description ? `<span class="cgt-entry-desc">— ${r.description}</span>` : ''}
+              ${r.date ? `<span class="cgt-entry-date">${formatDate(r.date)}</span>` : ''}
+              ${r.source_expense_id ? `<span class="cgt-entry-imported">imported</span>` : ''}
+            </div>
+            <div class="cgt-entry-right">
+              <span class="cgt-entry-amount">${formatGBP(r.amount)}</span>
+              <div class="cgt-entry-actions">
+                <button class="btn btn-ghost btn-xs" data-edit-cgt="${r.id}">Edit</button>
+                <button class="btn btn-danger btn-xs" data-delete-cgt="${r.id}">Del</button>
+              </div>
+            </div>
           </div>`).join('');
+
+    const gainHtml = _buildGainCalc(prop, costBase);
 
     return `
       <div class="cgt-property-card">
-        <div class="cgt-property-name">${prop.name}</div>
-        ${rowsHtml}
-        <div class="cgt-row cgt-total">
-          <span>Cost base total</span>
-          <span>${formatGBP(total)}</span>
+        <div class="cgt-card-header">
+          <div>
+            <div class="cgt-property-name">${prop.name}</div>
+            ${prop.address ? `<div class="cgt-property-address">${prop.address.replace(/\n/g, ', ')}</div>` : ''}
+          </div>
+          <div class="cgt-card-header-right">
+            <span class="property-status-badge ${status}">${statusLabel}</span>
+            <div class="cgt-card-actions">
+              <button class="btn btn-primary btn-sm" data-add-cgt-prop="${prop.id}">+ Add</button>
+              ${unimported.length > 0
+                ? `<button class="btn btn-secondary btn-sm" data-import-improvements="${prop.id}" title="${unimported.length} improvement${unimported.length !== 1 ? 's' : ''} to import">↓ ${unimported.length} improvement${unimported.length !== 1 ? 's' : ''}</button>`
+                : ''}
+            </div>
+          </div>
         </div>
-      </div>
-    `;
+
+        <div class="cgt-entries">${entriesHtml}</div>
+
+        <div class="cgt-cost-base-total">
+          <span>Cost base total</span>
+          <span class="cgt-cost-base-value">${formatGBP(costBase)}</span>
+        </div>
+
+        ${gainHtml}
+      </div>`;
   }).join('');
+
+  // Wire card-level add buttons
+  el.querySelectorAll('[data-add-cgt-prop]').forEach(btn => {
+    btn.addEventListener('click', () => openCGTForm(btn.dataset.addCgtProp, null));
+  });
+  el.querySelectorAll('[data-import-improvements]').forEach(btn => {
+    btn.addEventListener('click', () => importCapitalImprovements(btn.dataset.importImprovements));
+  });
+  el.querySelectorAll('[data-edit-cgt]').forEach(btn => {
+    btn.addEventListener('click', () => openCGTForm(null, btn.dataset.editCgt));
+  });
+  el.querySelectorAll('[data-delete-cgt]').forEach(btn => {
+    btn.addEventListener('click', () => deleteCGTEntry(btn.dataset.deleteCgt));
+  });
+}
+
+function _buildGainCalc(prop, costBase) {
+  const salePrice = parseFloat(prop.sale_price) || 0;
+  if (prop.status !== 'sold' || salePrice <= 0) return '';
+
+  const grossGain     = salePrice - costBase;
+  const taxableGain   = Math.max(0, grossGain - CGT_ANNUAL_EXEMPTION);
+  const cgtBasic      = taxableGain * 0.18;
+  const cgtHigher     = taxableGain * 0.24;
+  const isLoss        = grossGain < 0;
+
+  return `
+    <div class="cgt-gain-calc">
+      <div class="cgt-gain-heading">Estimated Gain on Disposal</div>
+      <div class="cgt-gain-row">
+        <span>Sale proceeds</span>
+        <span>${formatGBP(salePrice)}</span>
+      </div>
+      <div class="cgt-gain-row cgt-gain-deduction">
+        <span>Less: cost base</span>
+        <span>−${formatGBP(costBase)}</span>
+      </div>
+      <div class="cgt-gain-row cgt-gain-subtotal ${isLoss ? 'cgt-gain-loss' : ''}">
+        <span>${isLoss ? 'Capital loss' : 'Gross gain'}</span>
+        <span>${isLoss ? '−' : ''}${formatGBP(Math.abs(grossGain))}</span>
+      </div>
+      ${isLoss ? `
+        <p class="cgt-gain-note">A capital loss can be offset against gains in the same or future tax years. Report to HMRC even if no tax is due.</p>
+      ` : `
+      <div class="cgt-gain-row cgt-gain-deduction">
+        <span>Less: annual CGT exemption (2024/25)</span>
+        <span>−${formatGBP(Math.min(CGT_ANNUAL_EXEMPTION, grossGain))}</span>
+      </div>
+      <div class="cgt-gain-row cgt-gain-total">
+        <span>Taxable gain</span>
+        <span>${formatGBP(taxableGain)}</span>
+      </div>
+      <div class="cgt-gain-row">
+        <span>CGT at 18% (basic rate taxpayer)</span>
+        <span>${formatGBP(cgtBasic)}</span>
+      </div>
+      <div class="cgt-gain-row cgt-gain-higher">
+        <span>CGT at 24% (higher rate taxpayer)</span>
+        <span>${formatGBP(cgtHigher)}</span>
+      </div>
+      <p class="cgt-gain-note">Residential property CGT rates from 30 Oct 2024. Private Residence Relief, letting relief, and other deductions may apply. Consult an accountant before filing.</p>
+      `}
+    </div>`;
+}
+
+// ─── Open CGT entry form ──────────────────────────────────────
+function openCGTForm(propertyId, id) {
+  const panel   = document.getElementById('cgt-form-panel');
+  const form    = document.getElementById('cgt-form');
+  const titleEl = document.getElementById('cgt-form-title');
+
+  panel.classList.remove('hidden');
+  form.reset();
+  document.querySelectorAll('#cgt-form .field-error').forEach(e => e.classList.add('hidden'));
+
+  if (id) {
+    dbGet('cgt', id).then(r => {
+      if (!r) return;
+      titleEl.textContent                = 'Edit CGT Entry';
+      form.elements['id'].value          = r.id;
+      form.elements['property_id'].value = r.property_id;
+      form.elements['category'].value    = r.category;
+      form.elements['description'].value = r.description || '';
+      form.elements['amount'].value      = r.amount;
+      form.elements['date'].value        = r.date || '';
+      form.elements['notes'].value       = r.notes || '';
+    });
+  } else {
+    titleEl.textContent = 'Add CGT Entry';
+    if (propertyId) form.elements['property_id'].value = propertyId;
+  }
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ─── Delete CGT entry ─────────────────────────────────────────
+async function deleteCGTEntry(id) {
+  if (!confirm('Delete this CGT entry?')) return;
+  await dbDelete('cgt', id);
+  _sheetsWrite('CGT', 'delete', null, id);
+  await renderCGT();
+  showToast('Entry deleted', 'warn');
+}
+
+// ─── Import capital improvements from Expenses ────────────────
+async function importCapitalImprovements(propertyId) {
+  const [allExpenses, cgtRecords] = await Promise.all([
+    dbGetAll('expenses'),
+    dbGetAll('cgt'),
+  ]);
+
+  const importedIds  = new Set(cgtRecords.map(r => r.source_expense_id).filter(Boolean));
+  const toImport     = allExpenses.filter(e =>
+    e.property_id === propertyId &&
+    e.category    === 'Improvements' &&
+    !importedIds.has(e.id)
+  );
+
+  if (toImport.length === 0) {
+    showToast('No new improvements to import', 'warn');
+    return;
+  }
+
+  for (const exp of toImport) {
+    const record = {
+      id:               generateId(),
+      property_id:      propertyId,
+      category:         'Capital improvement',
+      description:      exp.supplier || exp.notes || '',
+      amount:           Number(exp.amount),
+      date:             exp.date,
+      notes:            exp.notes || '',
+      source_expense_id: exp.id,
+    };
+    await dbPut('cgt', record);
+    _sheetsWrite('CGT', 'append', record);
+  }
+
+  await renderCGT();
+  showToast(`Imported ${toImport.length} improvement${toImport.length !== 1 ? 's' : ''} ✓`, 'success');
+}
+
+// ─── Init CGT form ────────────────────────────────────────────
+function initCGTForm() {
+  const btn       = document.getElementById('btn-add-cgt');
+  const panel     = document.getElementById('cgt-form-panel');
+  const form      = document.getElementById('cgt-form');
+  const cancel    = document.getElementById('btn-cancel-cgt');
+  const submitBtn = document.getElementById('cgt-submit-btn');
+
+  btn.addEventListener('click', () => openCGTForm(null, null));
+  cancel.addEventListener('click', () => panel.classList.add('hidden'));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    let valid = true;
+    const propSel = form.elements['property_id'];
+    const amtIn   = form.elements['amount'];
+    const propErr = form.querySelector('[data-field="cgt-property"]');
+    const amtErr  = form.querySelector('[data-field="cgt-amount"]');
+
+    if (!propSel.value) { propErr.classList.remove('hidden'); valid = false; }
+    else propErr.classList.add('hidden');
+
+    if (!amtIn.value || parseFloat(amtIn.value) <= 0) { amtErr.classList.remove('hidden'); valid = false; }
+    else amtErr.classList.add('hidden');
+
+    if (!valid) return;
+
+    const origText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const fd         = new FormData(form);
+      const existingId = fd.get('id');
+      const id         = existingId || generateId();
+      const isNew      = !existingId;
+      const record = {
+        id,
+        property_id:      fd.get('property_id'),
+        category:         fd.get('category'),
+        description:      fd.get('description'),
+        amount:           parseFloat(fd.get('amount')),
+        date:             fd.get('date'),
+        notes:            fd.get('notes'),
+        source_expense_id: '',
+      };
+      await dbPut('cgt', record);
+      _sheetsWrite('CGT', isNew ? 'append' : 'update', record);
+      panel.classList.add('hidden');
+      form.reset();
+      await renderCGT();
+      showToast(`CGT entry ${isNew ? 'saved' : 'updated'} ✓`, 'success');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
+  });
 }
 
 // ─── Properties screen ────────────────────────────────────────
@@ -1240,6 +1486,7 @@ async function init() {
   initIncomeForm();
   initExpenseForm();
   initPropertyForm();
+  initCGTForm();
 
   // Export / import
   document.getElementById('btn-export')?.addEventListener('click', exportJSON);
