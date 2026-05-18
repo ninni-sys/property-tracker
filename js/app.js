@@ -1367,30 +1367,57 @@ async function importJSON(file) {
 async function renderGmailResults(results) {
   const el = document.getElementById('gmail-results');
   if (!results || results.length === 0) {
-    el.innerHTML = '<p class="empty-state">No new receipts found.</p>';
+    el.innerHTML = '<p class="empty-state">No new receipts found. Try a wider date range or different keywords.</p>';
+    await _renderGmailHistory();
     return;
   }
-  el.innerHTML = results.map(r => `
-    <div class="gmail-result-item" data-msg-id="${r.gmail_message_id}">
-      <div class="gmail-result-subject">${r.subject}</div>
-      <div class="gmail-result-meta">${r.suggested_supplier} · ${formatDate(r.date)}</div>
-      ${r.suggested_amount ? `<div class="gmail-result-amount">${formatGBP(r.suggested_amount)}</div>` : ''}
-      <div class="gmail-result-actions">
-        <button class="btn btn-primary btn-sm" data-approve="${r.gmail_message_id}">Approve</button>
-        <button class="btn btn-ghost btn-sm" data-dismiss="${r.gmail_message_id}">Dismiss</button>
+
+  const propOptions = _properties.map(p =>
+    `<option value="${p.id}">${escHtml(p.name)}</option>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="gmail-results-count">${results.length} new item${results.length !== 1 ? 's' : ''} found</div>
+    ${results.map(r => `
+      <div class="gmail-result-item" data-msg-id="${r.gmail_message_id}">
+        <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+        <div class="gmail-result-meta">
+          <span class="gmail-result-supplier">${escHtml(r.suggested_supplier || 'Unknown sender')}</span>
+          <span class="gmail-result-dot">·</span>
+          <span>${formatDate(r.date)}</span>
+        </div>
+        ${r.suggested_amount ? `<div class="gmail-result-amount">${formatGBP(r.suggested_amount)}</div>` : '<div class="gmail-result-amount gmail-result-amount--none">No amount found</div>'}
+        ${r.body_preview ? `<div class="gmail-result-preview">${escHtml(r.body_preview.slice(0, 180))}…</div>` : ''}
+        <div class="gmail-approve-row">
+          <select class="gmail-property-select" data-for="${r.gmail_message_id}">
+            <option value="">— Assign property (optional) —</option>
+            ${propOptions}
+          </select>
+        </div>
+        <div class="gmail-result-actions">
+          <button class="btn btn-primary btn-sm" data-approve="${r.gmail_message_id}">Approve as expense</button>
+          <button class="btn btn-ghost btn-sm" data-dismiss="${r.gmail_message_id}">Dismiss</button>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('')}
+  `;
 
   el.querySelectorAll('[data-approve]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const msgId = btn.dataset.approve;
-      const item  = results.find(r => r.gmail_message_id === msgId);
+      const msgId      = btn.dataset.approve;
+      const item       = results.find(r => r.gmail_message_id === msgId);
       if (!item) return;
+
+      const propSel    = el.querySelector(`select[data-for="${msgId}"]`);
+      const propertyId = propSel?.value || '';
+
+      btn.disabled     = true;
+      btn.textContent  = 'Saving…';
+
       const expenseId = generateId();
       const expense = {
-        id: expenseId,
-        property_id: '',
+        id:          expenseId,
+        property_id: propertyId,
         date:        item.date,
         tax_year:    getTaxYear(item.date),
         amount:      item.suggested_amount || 0,
@@ -1402,20 +1429,27 @@ async function renderGmailResults(results) {
         status:      'active',
       };
       await dbPut('expenses', expense);
+      _sheetsWrite('Expenses', 'append', expense);
+
       const scanRecord = {
-        id: generateId(),
-        gmail_message_id:  msgId,
-        date:              item.date,
-        subject:           item.subject,
-        suggested_supplier: item.suggested_supplier,
-        suggested_amount:  item.suggested_amount,
-        status:            'approved',
-        linked_expense_id: expenseId,
+        id:                 generateId(),
+        gmail_message_id:   msgId,
+        date:               item.date,
+        subject:            item.subject,
+        suggested_supplier: item.suggested_supplier || '',
+        suggested_amount:   item.suggested_amount || 0,
+        status:             'approved',
+        linked_expense_id:  expenseId,
       };
       await dbPut('gmailScan', scanRecord);
-      btn.closest('.gmail-result-item').remove();
-      await renderReviewList();
-      showToast('Added as expense ✓', 'success');
+      _sheetsWrite('GmailScan', 'append', scanRecord);
+
+      const card = btn.closest('.gmail-result-item');
+      card.classList.add('gmail-result-item--done');
+      setTimeout(() => card.remove(), 400);
+
+      await Promise.all([renderReviewList(), renderExpenseLedger()]);
+      showToast('Added as Uncategorised expense ✓', 'success');
     });
   });
 
@@ -1423,18 +1457,66 @@ async function renderGmailResults(results) {
     btn.addEventListener('click', async () => {
       const msgId = btn.dataset.dismiss;
       const item  = results.find(r => r.gmail_message_id === msgId);
+
       const scanRecord = {
-        id: generateId(),
-        gmail_message_id: msgId,
-        date:    item?.date || '',
-        subject: item?.subject || '',
-        status:  'dismissed',
-        linked_expense_id: '',
+        id:                 generateId(),
+        gmail_message_id:   msgId,
+        date:               item?.date     || '',
+        subject:            item?.subject  || '',
+        suggested_supplier: item?.suggested_supplier || '',
+        suggested_amount:   item?.suggested_amount || 0,
+        status:             'dismissed',
+        linked_expense_id:  '',
       };
       await dbPut('gmailScan', scanRecord);
-      btn.closest('.gmail-result-item').remove();
+      _sheetsWrite('GmailScan', 'append', scanRecord);
+
+      const card = btn.closest('.gmail-result-item');
+      card.classList.add('gmail-result-item--done');
+      setTimeout(() => card.remove(), 400);
     });
   });
+
+  await _renderGmailHistory();
+}
+
+// ─── Gmail history (previously reviewed items) ────────────────
+async function _renderGmailHistory() {
+  const all = await dbGetAll('gmailScan');
+  const reviewed = all.filter(r => r.status === 'approved' || r.status === 'dismissed');
+  reviewed.sort((a, b) => b.date.localeCompare(a.date));
+
+  const headerEl  = document.getElementById('gmail-history-header');
+  const historyEl = document.getElementById('gmail-history');
+  if (!headerEl || !historyEl) return;
+
+  if (reviewed.length === 0) {
+    headerEl.style.display = 'none';
+    historyEl.style.display = 'none';
+    return;
+  }
+
+  headerEl.style.display = 'flex';
+  const toggleBtn = document.getElementById('btn-toggle-history');
+  const isOpen    = historyEl.style.display !== 'none' && historyEl.innerHTML.trim() !== '';
+
+  historyEl.innerHTML = reviewed.slice(0, 50).map(r => `
+    <div class="gmail-history-item gmail-history-item--${r.status}">
+      <div class="gmail-history-badge gmail-history-badge--${r.status}">${r.status === 'approved' ? 'Approved' : 'Dismissed'}</div>
+      <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+      <div class="gmail-result-meta">
+        ${r.suggested_supplier ? escHtml(r.suggested_supplier) + ' · ' : ''}${formatDate(r.date)}
+        ${r.suggested_amount ? ' · ' + formatGBP(Number(r.suggested_amount)) : ''}
+      </div>
+    </div>
+  `).join('');
+
+  if (!isOpen) {
+    historyEl.style.display = 'none';
+    if (toggleBtn) toggleBtn.textContent = `Show (${reviewed.length})`;
+  } else {
+    if (toggleBtn) toggleBtn.textContent = 'Hide';
+  }
 }
 
 // ─── Screen helpers ───────────────────────────────────────────
@@ -1575,18 +1657,52 @@ async function init() {
     if (e.target.files[0]) importJSON(e.target.files[0]);
   });
 
+  // Gmail scan controls — segment buttons for date range
+  document.getElementById('gmail-days-group')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.segment-btn');
+    if (!btn) return;
+    document.querySelectorAll('#gmail-days-group .segment-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+
   // Gmail scan button
   document.getElementById('btn-scan-gmail')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-scan-gmail');
-    btn.disabled = true;
+    const btn        = document.getElementById('btn-scan-gmail');
+    const statusEl   = document.getElementById('gmail-scan-status');
+    const activeDay  = document.querySelector('#gmail-days-group .segment-btn.active');
+    const days       = activeDay ? parseInt(activeDay.dataset.days, 10) : 60;
+    const customQ    = (document.getElementById('gmail-custom-query')?.value || '').trim();
+
+    btn.disabled    = true;
     btn.textContent = 'Scanning…';
+    if (statusEl) { statusEl.textContent = 'Searching Gmail…'; statusEl.className = 'gmail-scan-status'; }
+
     try {
-      const results = await scanGmail();
+      const results = await scanGmail({ days, query: customQ });
+      if (statusEl) {
+        statusEl.textContent = results.length
+          ? `Found ${results.length} new item${results.length !== 1 ? 's' : ''}`
+          : 'No new items found';
+        statusEl.className = 'gmail-scan-status gmail-scan-status--done';
+      }
       await renderGmailResults(results);
+    } catch (err) {
+      if (statusEl) { statusEl.textContent = 'Scan failed — ' + err.message; statusEl.className = 'gmail-scan-status gmail-scan-status--error'; }
+      console.error('Gmail scan error:', err);
     } finally {
-      btn.disabled = false;
+      btn.disabled    = false;
       btn.textContent = 'Scan Inbox';
     }
+  });
+
+  // Gmail history toggle
+  document.getElementById('btn-toggle-history')?.addEventListener('click', () => {
+    const el     = document.getElementById('gmail-history');
+    const btn    = document.getElementById('btn-toggle-history');
+    const isOpen = el.style.display !== 'none';
+    el.style.display = isOpen ? 'none' : 'flex';
+    btn.textContent  = isOpen ? `Show` : 'Hide';
+    if (!isOpen) _renderGmailHistory();
   });
 
   // Offline banner
