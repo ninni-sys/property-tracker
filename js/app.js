@@ -44,7 +44,10 @@ let _properties = [];
 async function loadProperties() {
   _properties = await dbGetAll('properties');
   if (_properties.length === 0) {
-    for (const p of SEED_PROPERTIES) { await dbPut('properties', p); }
+    for (const p of SEED_PROPERTIES) {
+      await dbPut('properties', p);
+      _sheetsWrite('Properties', 'append', p);
+    }
     _properties = SEED_PROPERTIES.slice();
   }
   populatePropertySelects();
@@ -306,6 +309,7 @@ async function renderReviewList() {
       if (!record) return;
       record.category = cat;
       await dbPut('expenses', record);
+      _sheetsWrite('Expenses', 'update', record);
       showToast('Categorised ✓', 'success');
       await renderReviewList();
       renderDashboard();
@@ -400,6 +404,7 @@ function openPropertyForm(id) {
 async function deleteProperty(id) {
   if (!confirm('Delete this property? All associated records will remain.')) return;
   await dbDelete('properties', id);
+  _sheetsWrite('Properties', 'delete', null, id);
   _properties = _properties.filter(p => p.id !== id);
   populatePropertySelects();
   renderPropertyList();
@@ -436,6 +441,7 @@ function initIncomeForm() {
       notes:       fd.get('notes'),
     };
     await dbPut('income', record);
+    _sheetsWrite('Income', 'append', record);
     panel.classList.add('hidden');
     form.reset();
     await renderIncomeLedger();
@@ -488,6 +494,7 @@ function initExpenseForm() {
       status:      'active',
     };
     await dbPut('expenses', record);
+    _sheetsWrite('Expenses', 'append', record);
     panel.classList.add('hidden');
     form.reset();
     await renderExpenseLedger();
@@ -516,7 +523,9 @@ function initPropertyForm() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const id = fd.get('id') || generateId();
+    const existingId = fd.get('id');
+    const id = existingId || generateId();
+    const isNew = !existingId;
     const record = {
       id,
       name:           fd.get('name'),
@@ -525,6 +534,7 @@ function initPropertyForm() {
       ownership_pct:  fd.get('ownership_pct') ? parseFloat(fd.get('ownership_pct')) : 100,
     };
     await dbPut('properties', record);
+    _sheetsWrite('Properties', isNew ? 'append' : 'update', record);
     const idx = _properties.findIndex(p => p.id === id);
     if (idx >= 0) _properties[idx] = record;
     else _properties.push(record);
@@ -662,8 +672,37 @@ function showAppScreen() {
   document.getElementById('screen-app').classList.add('active');
 }
 
+// ─── Sheets write-through helper ─────────────────────────────
+// action: 'append' | 'update' | 'delete'
+async function _sheetsWrite(tabName, action, record, id) {
+  if (!isAuthenticated()) return;
+  try {
+    setSyncStatus('pending', 'Syncing…');
+    if (action === 'append') {
+      await sheetsAppend(tabName, record);
+    } else if (action === 'update') {
+      await sheetsUpdate(tabName, record);
+    } else if (action === 'delete') {
+      await sheetsDeleteRow(tabName, id);
+    }
+    setSyncStatus('synced', 'Synced');
+  } catch (err) {
+    console.warn(`_sheetsWrite(${tabName}, ${action}) failed:`, err.message);
+    setSyncStatus('error', 'Sync error');
+    // Queue for later retry
+    await queueOperation({ tabName, action, record, id, ts: Date.now() }).catch(() => {});
+  }
+}
+
 // ─── Load all app data and renders after auth ─────────────────
 async function loadAppData() {
+  // Init Sheets structure then pull latest data
+  try {
+    await sheetsInit();
+    await syncFromSheets();
+  } catch (err) {
+    console.warn('Sheets init/sync failed:', err.message);
+  }
   await loadProperties();
   populateTaxYearSelects();
   await Promise.all([
