@@ -443,9 +443,10 @@ tfoot .tfoot-total th { color: var(--text); font-size: .85rem; border-top: 2px s
   gap: 4px;
 }
 
-.ledger-item.uncategorised { border-left: 3px solid var(--warn); }
+.ledger-item.uncategorised  { border-left: 3px solid var(--warn); }
 .ledger-item.capital        { border-left: 3px solid var(--primary-light); }
 .ledger-item.non-allowable  { border-left: 3px solid var(--text-dim); }
+.ledger-item.income-deposit { border-left: 3px solid var(--text-dim); opacity: .8; }
 
 .ledger-item-header {
   display: flex;
@@ -629,6 +630,17 @@ textarea { resize: vertical; min-height: 64px; }
 }
 
 .receipt-input-group input { flex: 1; }
+
+.form-note {
+  font-size: .78rem;
+  color: var(--text-muted);
+  background: rgba(79,70,229,.07);
+  border: 1px solid rgba(79,70,229,.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
 
 .form-actions {
   display: flex;

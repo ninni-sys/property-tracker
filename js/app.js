@@ -298,34 +298,108 @@ async function renderDashboard() {
 }
 
 // ─── Income ledger ────────────────────────────────────────────
+// ─── Income ledger ────────────────────────────────────────────
 async function renderIncomeLedger() {
   const propFilter = document.getElementById('income-filter-property')?.value;
   const yearFilter = document.getElementById('income-filter-year')?.value;
-  const all = await dbGetAll('income');
+  const typeFilter = document.getElementById('income-filter-type')?.value;
+  const all  = await dbGetAll('income');
   const rows = all
-    .filter(r => (!propFilter || r.property_id === propFilter) && (!yearFilter || r.tax_year === yearFilter))
+    .filter(r =>
+      (!propFilter || r.property_id === propFilter) &&
+      (!yearFilter || r.tax_year    === yearFilter) &&
+      (!typeFilter || r.type        === typeFilter)
+    )
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const el = document.getElementById('income-ledger');
+  const el       = document.getElementById('income-ledger');
+  const totalBar = document.getElementById('income-ledger-total');
+  const totalVal = document.getElementById('income-ledger-total-value');
+
   if (rows.length === 0) {
     el.innerHTML = '<p class="empty-state">No income recorded yet.</p>';
+    totalBar?.classList.add('hidden');
     return;
   }
+
+  const filteredTotal = rows.reduce((s, r) => s + Number(r.amount), 0);
+  if (totalVal) totalVal.textContent = formatGBP(filteredTotal);
+  totalBar?.classList.remove('hidden');
+
+  const isDeposit = (r) => r.type === 'Deposit received';
+
   el.innerHTML = rows.map(r => `
-    <div class="ledger-item">
+    <div class="ledger-item${isDeposit(r) ? ' income-deposit' : ''}" data-income-id="${r.id}">
       <div class="ledger-item-header">
         <span class="ledger-item-title">${getPropertyName(r.property_id)}</span>
-        <span class="ledger-item-amount income-amount">${formatGBP(r.amount)}</span>
+        <div class="ledger-item-right">
+          <span class="ledger-item-amount income-amount">${formatGBP(r.amount)}</span>
+          <div class="ledger-item-actions">
+            <button class="btn btn-ghost btn-xs" data-edit-income="${r.id}">Edit</button>
+            <button class="btn btn-danger btn-xs" data-delete-income="${r.id}">Del</button>
+          </div>
+        </div>
       </div>
       <div class="ledger-item-meta">
         <span class="ledger-item-date">${formatDate(r.date)}</span>
         <span class="tag income">${r.type}</span>
-        ${r.tenant_ref ? `<span class="tag">${r.tenant_ref}</span>` : ''}
+        ${r.tenant_ref  ? `<span class="tag">${r.tenant_ref}</span>`  : ''}
+        ${r.receipt_ref ? `<span class="tag">📄 ${r.receipt_ref}</span>` : ''}
         <span class="tag">${r.tax_year}</span>
       </div>
       ${r.notes ? `<div class="ledger-item-notes">${r.notes}</div>` : ''}
     </div>
   `).join('');
+
+  el.querySelectorAll('[data-edit-income]').forEach(btn => {
+    btn.addEventListener('click', () => openIncomeForm(btn.dataset.editIncome));
+  });
+  el.querySelectorAll('[data-delete-income]').forEach(btn => {
+    btn.addEventListener('click', () => deleteIncome(btn.dataset.deleteIncome));
+  });
+}
+
+// ─── Open income form (add or edit) ──────────────────────────
+function openIncomeForm(id) {
+  const panel   = document.getElementById('income-form-panel');
+  const form    = document.getElementById('income-form');
+  const titleEl = document.getElementById('income-form-title');
+  const depositNote = document.getElementById('deposit-note');
+
+  panel.classList.remove('hidden');
+  form.reset();
+  depositNote.classList.add('hidden');
+  document.querySelectorAll('#income-form .field-error').forEach(e => e.classList.add('hidden'));
+
+  if (id) {
+    dbGet('income', id).then(r => {
+      if (!r) return;
+      titleEl.textContent              = 'Edit Income';
+      form.elements['id'].value        = r.id;
+      form.elements['property_id'].value = r.property_id;
+      form.elements['date'].value      = r.date;
+      form.elements['type'].value      = r.type;
+      form.elements['amount'].value    = r.amount;
+      form.elements['tenant_ref'].value = r.tenant_ref || '';
+      form.elements['receipt_ref'].value = r.receipt_ref || '';
+      form.elements['notes'].value     = r.notes || '';
+      if (r.type === 'Deposit received') depositNote.classList.remove('hidden');
+    });
+  } else {
+    titleEl.textContent         = 'Add Income';
+    form.elements['date'].value = new Date().toISOString().slice(0, 10);
+  }
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ─── Delete income ────────────────────────────────────────────
+async function deleteIncome(id) {
+  if (!confirm('Delete this income record?')) return;
+  await dbDelete('income', id);
+  _sheetsWrite('Income', 'delete', null, id);
+  await renderIncomeLedger();
+  renderDashboard();
+  showToast('Income record deleted', 'warn');
 }
 
 // ─── Expense ledger ───────────────────────────────────────────
@@ -665,40 +739,72 @@ async function deleteProperty(id) {
 
 // ─── Form: income ─────────────────────────────────────────────
 function initIncomeForm() {
-  const btn    = document.getElementById('btn-add-income');
-  const panel  = document.getElementById('income-form-panel');
-  const form   = document.getElementById('income-form');
-  const cancel = document.getElementById('btn-cancel-income');
+  const btn       = document.getElementById('btn-add-income');
+  const panel     = document.getElementById('income-form-panel');
+  const form      = document.getElementById('income-form');
+  const cancel    = document.getElementById('btn-cancel-income');
+  const typeSel   = document.getElementById('income-type-select');
+  const amtIn     = document.getElementById('income-amount');
+  const depositNote = document.getElementById('deposit-note');
+  const submitBtn = document.getElementById('income-submit-btn');
 
-  btn.addEventListener('click', () => {
-    panel.classList.remove('hidden');
-    form.reset();
-    form.date.value = new Date().toISOString().slice(0, 10);
-  });
-
+  btn.addEventListener('click', () => openIncomeForm(null));
   cancel.addEventListener('click', () => panel.classList.add('hidden'));
+
+  // Show deposit note when type = Deposit received
+  typeSel.addEventListener('change', () => {
+    depositNote.classList.toggle('hidden', typeSel.value !== 'Deposit received');
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fd = new FormData(form);
-    const record = {
-      id:          generateId(),
-      property_id: fd.get('property_id'),
-      date:        fd.get('date'),
-      tax_year:    getTaxYear(fd.get('date')),
-      amount:      parseFloat(fd.get('amount')),
-      type:        fd.get('type'),
-      tenant_ref:  fd.get('tenant_ref'),
-      receipt_ref: fd.get('receipt_ref'),
-      notes:       fd.get('notes'),
-    };
-    await dbPut('income', record);
-    _sheetsWrite('Income', 'append', record);
-    panel.classList.add('hidden');
-    form.reset();
-    await renderIncomeLedger();
-    renderDashboard();
-    showToast('Income saved ✓', 'success');
+
+    // Inline validation
+    let valid = true;
+    const propSel = form.elements['property_id'];
+    const propErr = form.querySelector('[data-field="income-property"]');
+    const amtErr  = form.querySelector('[data-field="income-amount"]');
+
+    if (!propSel.value) { propErr.classList.remove('hidden'); valid = false; }
+    else propErr.classList.add('hidden');
+
+    if (!amtIn.value || parseFloat(amtIn.value) <= 0) { amtErr.classList.remove('hidden'); valid = false; }
+    else amtErr.classList.add('hidden');
+
+    if (!valid) return;
+
+    const origText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const fd         = new FormData(form);
+      const existingId = fd.get('id');
+      const id         = existingId || generateId();
+      const isNew      = !existingId;
+      const record = {
+        id,
+        property_id: fd.get('property_id'),
+        date:        fd.get('date'),
+        tax_year:    getTaxYear(fd.get('date')),
+        amount:      parseFloat(fd.get('amount')),
+        type:        fd.get('type'),
+        tenant_ref:  fd.get('tenant_ref'),
+        receipt_ref: fd.get('receipt_ref'),
+        notes:       fd.get('notes'),
+      };
+      await dbPut('income', record);
+      _sheetsWrite('Income', isNew ? 'append' : 'update', record);
+      panel.classList.add('hidden');
+      form.reset();
+      depositNote.classList.add('hidden');
+      await renderIncomeLedger();
+      renderDashboard();
+      showToast(`Income ${isNew ? 'saved' : 'updated'} ✓`, 'success');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
   });
 }
 
@@ -1123,6 +1229,7 @@ async function init() {
   // Income filters
   document.getElementById('income-filter-property')?.addEventListener('change', renderIncomeLedger);
   document.getElementById('income-filter-year')?.addEventListener('change', renderIncomeLedger);
+  document.getElementById('income-filter-type')?.addEventListener('change', renderIncomeLedger);
 
   // Expense filters
   document.getElementById('expense-filter-property')?.addEventListener('change', renderExpenseLedger);

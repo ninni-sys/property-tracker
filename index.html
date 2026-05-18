@@ -200,44 +200,52 @@
         </div>
 
         <div id="income-form-panel" class="form-panel hidden">
-          <h3>Add Income</h3>
-          <form id="income-form">
+          <h3 id="income-form-title">Add Income</h3>
+          <form id="income-form" novalidate>
+            <input type="hidden" name="id" />
             <div class="form-row">
-              <label>Property</label>
-              <select name="property_id" required>
+              <label>Property <span class="required">*</span></label>
+              <select name="property_id" id="income-property-select">
                 <option value="">Select property…</option>
               </select>
+              <span class="field-error hidden" data-field="income-property">Please select a property.</span>
             </div>
             <div class="form-row">
-              <label>Date</label>
+              <label>Date <span class="required">*</span></label>
               <input type="date" name="date" required />
             </div>
             <div class="form-row">
-              <label>Amount (£)</label>
-              <input type="number" name="amount" step="0.01" min="0" required />
-            </div>
-            <div class="form-row">
               <label>Type</label>
-              <select name="type" required>
+              <select name="type" id="income-type-select">
                 <option value="Rental income">Rental income</option>
                 <option value="Deposit received">Deposit received</option>
+                <option value="Insurance payout">Insurance payout</option>
                 <option value="Other">Other</option>
               </select>
             </div>
-            <div class="form-row">
-              <label>Tenant ref</label>
-              <input type="text" name="tenant_ref" />
+            <!-- Deposit note (shown when type = Deposit received) -->
+            <div id="deposit-note" class="form-note hidden">
+              ℹ Deposits held in a tenancy deposit scheme are not taxable income until forfeited. Only record if the deposit has been retained.
             </div>
             <div class="form-row">
-              <label>Receipt ref</label>
-              <input type="text" name="receipt_ref" />
+              <label>Amount (£) <span class="required">*</span></label>
+              <input type="number" name="amount" id="income-amount" step="0.01" min="0.01" placeholder="0.00" required />
+              <span class="field-error hidden" data-field="income-amount">Please enter an amount.</span>
+            </div>
+            <div class="form-row">
+              <label>Tenant ref</label>
+              <input type="text" name="tenant_ref" placeholder="e.g. J. Smith or Flat 2" />
+            </div>
+            <div class="form-row">
+              <label>Receipt / ref</label>
+              <input type="text" name="receipt_ref" placeholder="Bank ref or invoice number" />
             </div>
             <div class="form-row">
               <label>Notes</label>
-              <textarea name="notes" rows="2"></textarea>
+              <textarea name="notes" rows="2" placeholder="Optional"></textarea>
             </div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="submit" class="btn btn-primary" id="income-submit-btn">Save income</button>
               <button type="button" class="btn btn-ghost" id="btn-cancel-income">Cancel</button>
             </div>
           </form>
@@ -250,10 +258,22 @@
           <select id="income-filter-year" class="filter-select">
             <option value="">All years</option>
           </select>
+          <select id="income-filter-type" class="filter-select">
+            <option value="">All types</option>
+            <option value="Rental income">Rental income</option>
+            <option value="Deposit received">Deposit received</option>
+            <option value="Insurance payout">Insurance payout</option>
+            <option value="Other">Other</option>
+          </select>
         </div>
 
         <div id="income-ledger" class="ledger">
           <p class="empty-state">No income recorded yet.</p>
+        </div>
+
+        <div id="income-ledger-total" class="ledger-total hidden">
+          <span>Filtered total</span>
+          <span id="income-ledger-total-value">£0.00</span>
         </div>
       </section>
 
