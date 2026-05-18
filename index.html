@@ -393,7 +393,28 @@
         <div class="page-header">
           <h2>To Review</h2>
         </div>
-        <div id="review-list" class="ledger">
+
+        <!-- Progress bar + filters (hidden when no items) -->
+        <div id="review-header" class="review-header hidden">
+          <div class="review-progress">
+            <div class="review-progress-track">
+              <div class="review-progress-fill" id="review-progress-fill"></div>
+            </div>
+            <span class="review-progress-text" id="review-progress-text">0 remaining</span>
+          </div>
+          <div class="review-controls">
+            <select id="review-filter-property" class="filter-select">
+              <option value="">All properties</option>
+            </select>
+            <select id="review-sort" class="filter-select">
+              <option value="oldest">Oldest first</option>
+              <option value="newest">Newest first</option>
+              <option value="largest">Largest amount</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="review-list">
           <p class="empty-state success-state">All expenses are categorised.</p>
         </div>
       </section>

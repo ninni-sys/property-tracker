@@ -545,26 +545,74 @@ async function deleteExpense(id) {
 }
 
 // ─── To Review ────────────────────────────────────────────────
-async function renderReviewList() {
-  const all = await dbGetAll('expenses');
-  const pending = all.filter(e => expenseType(e.category) === 'uncategorised')
-                     .sort((a, b) => a.date.localeCompare(b.date));
+// Tracks total at first render for the progress bar
+let _reviewTotal = 0;
 
-  // Update badge
+async function renderReviewList() {
+  const propFilter = document.getElementById('review-filter-property')?.value || '';
+  const sortOrder  = document.getElementById('review-sort')?.value || 'oldest';
+
+  const all = await dbGetAll('expenses');
+  const allPending = all.filter(e => expenseType(e.category) === 'uncategorised');
+
+  // ── Badge (all uncategorised, not filtered) ───────────────
   const badge = document.getElementById('review-badge');
   if (badge) {
-    badge.textContent = pending.length;
-    badge.classList.toggle('hidden', pending.length === 0);
+    badge.textContent = allPending.length;
+    badge.classList.toggle('hidden', allPending.length === 0);
   }
 
+  // ── Progress tracking ─────────────────────────────────────
+  if (allPending.length > 0 && allPending.length > _reviewTotal) {
+    _reviewTotal = allPending.length;      // grows if new uncategorised items arrive
+  }
+  if (allPending.length === 0) _reviewTotal = 0;
+
+  const reviewedCount = _reviewTotal - allPending.length;
+  const pct = _reviewTotal > 0 ? Math.round(reviewedCount / _reviewTotal * 100) : 100;
+
+  const header = document.getElementById('review-header');
+  const fill   = document.getElementById('review-progress-fill');
+  const progTx = document.getElementById('review-progress-text');
+
+  if (allPending.length === 0) {
+    header?.classList.add('hidden');
+  } else {
+    header?.classList.remove('hidden');
+    if (fill)   fill.style.width = `${pct}%`;
+    if (progTx) progTx.textContent =
+      `${allPending.length} remaining${_reviewTotal > allPending.length ? ` · ${reviewedCount} done this session` : ''}`;
+  }
+
+  // ── Filter + sort visible items ───────────────────────────
+  let visible = allPending.filter(e => !propFilter || e.property_id === propFilter);
+
+  if (sortOrder === 'newest')  visible.sort((a, b) => b.date.localeCompare(a.date));
+  else if (sortOrder === 'largest') visible.sort((a, b) => Number(b.amount) - Number(a.amount));
+  else                         visible.sort((a, b) => a.date.localeCompare(b.date));
+
+  // ── Render ────────────────────────────────────────────────
   const el = document.getElementById('review-list');
-  if (pending.length === 0) {
-    el.innerHTML = '<p class="empty-state success-state">All expenses are categorised.</p>';
+
+  if (allPending.length === 0) {
+    el.innerHTML = `
+      <div class="review-done-card">
+        <div class="review-done-icon">✓</div>
+        <div class="review-done-title">All caught up!</div>
+        <p>Every expense has been categorised. Your tax calculation is up to date.</p>
+        <button class="btn btn-primary" id="btn-review-to-dash">View Dashboard →</button>
+      </div>`;
+    document.getElementById('btn-review-to-dash')?.addEventListener('click', () => navigateTo('dashboard'));
+    return;
+  }
+
+  if (visible.length === 0) {
+    el.innerHTML = '<p class="empty-state">No items for this property. Try "All properties".</p>';
     return;
   }
 
   const categoryOptions = `
-    <option value="Uncategorised">Uncategorised — to review later</option>
+    <option value="Uncategorised">— choose a category —</option>
     <optgroup label="Revenue (tax deductible)">
       <option value="Mortgage interest">Mortgage interest</option>
       <option value="Insurance">Insurance</option>
@@ -581,33 +629,59 @@ async function renderReviewList() {
     </optgroup>
     <optgroup label="Not deductible">
       <option value="Personal / non-allowable">Personal / non-allowable</option>
-    </optgroup>
-  `;
+    </optgroup>`;
 
-  el.innerHTML = pending.map(r => `
-    <div class="review-item" data-id="${r.id}">
-      <div class="review-item-header">
-        <span class="review-item-title">${getPropertyName(r.property_id)}${r.supplier ? ' — ' + r.supplier : ''}</span>
-        <span class="review-item-amount">−${formatGBP(r.amount)}</span>
-      </div>
-      <div class="review-item-date">${formatDate(r.date)}</div>
-      <select class="review-category-select" data-expense-id="${r.id}">${categoryOptions}</select>
-    </div>
-  `).join('');
+  el.innerHTML = visible.map(r => {
+    const receiptHtml = isDriveFileId(r.receipt_ref)
+      ? `<a href="${getReceiptUrl(r.receipt_ref)}" target="_blank" class="tag receipt-tag">📎 Receipt</a>`
+      : r.receipt_ref ? `<span class="tag">📎 ${r.receipt_ref.slice(0, 20)}</span>` : '';
+
+    return `
+      <div class="review-item" data-expense-id="${r.id}">
+        <div class="review-item-header">
+          <div class="review-item-left">
+            <span class="review-item-prop">${getPropertyName(r.property_id)}</span>
+            ${r.supplier ? `<span class="review-item-supplier">${r.supplier}</span>` : ''}
+          </div>
+          <span class="review-item-amount">−${formatGBP(r.amount)}</span>
+        </div>
+        <div class="review-item-meta">
+          <span class="review-item-date">${formatDate(r.date)}</span>
+          <span class="tag">${r.tax_year}</span>
+          ${receiptHtml}
+        </div>
+        ${r.notes ? `<div class="review-item-notes">${r.notes}</div>` : ''}
+        <select class="review-category-select" data-expense-id="${r.id}">
+          ${categoryOptions}
+        </select>
+      </div>`;
+  }).join('');
 
   el.querySelectorAll('.review-category-select').forEach(sel => {
     sel.addEventListener('change', async (e) => {
-      const id = e.target.dataset.expenseId;
       const cat = e.target.value;
       if (cat === 'Uncategorised') return;
+
+      const id   = e.target.dataset.expenseId;
+      const item = e.target.closest('.review-item');
+
+      // Animate out the card
+      item.classList.add('review-item--done');
+      e.target.disabled = true;
+
+      // Save after animation
+      await new Promise(r => setTimeout(r, 320));
+
       const record = await dbGet('expenses', id);
-      if (!record) return;
-      record.category = cat;
-      await dbPut('expenses', record);
-      _sheetsWrite('Expenses', 'update', record);
-      showToast('Categorised ✓', 'success');
+      if (record) {
+        record.category = cat;
+        await dbPut('expenses', record);
+        _sheetsWrite('Expenses', 'update', record);
+      }
+
       await renderReviewList();
       renderDashboard();
+      renderExpenseLedger();
     });
   });
 }
@@ -1471,6 +1545,10 @@ async function init() {
     e.preventDefault();
     navigateTo('review');
   });
+
+  // Review filters / sort
+  document.getElementById('review-filter-property')?.addEventListener('change', renderReviewList);
+  document.getElementById('review-sort')?.addEventListener('change', renderReviewList);
 
   // Income filters
   document.getElementById('income-filter-property')?.addEventListener('change', renderIncomeLedger);
