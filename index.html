@@ -265,25 +265,23 @@
         </div>
 
         <div id="expense-form-panel" class="form-panel hidden">
-          <h3>Add Expense</h3>
-          <form id="expense-form">
+          <h3 id="expense-form-title">Add Expense</h3>
+          <form id="expense-form" novalidate>
+            <input type="hidden" name="id" />
             <div class="form-row">
-              <label>Property</label>
-              <select name="property_id" required>
+              <label>Property <span class="required">*</span></label>
+              <select name="property_id" id="expense-property-select">
                 <option value="">Select property…</option>
               </select>
+              <span class="field-error hidden" data-field="expense-property">Please select a property.</span>
             </div>
             <div class="form-row">
-              <label>Date</label>
+              <label>Date <span class="required">*</span></label>
               <input type="date" name="date" required />
             </div>
             <div class="form-row">
-              <label>Amount (£)</label>
-              <input type="number" name="amount" step="0.01" min="0" required />
-            </div>
-            <div class="form-row">
               <label>Category</label>
-              <select name="category" required>
+              <select name="category" id="expense-category-select">
                 <option value="Uncategorised">Uncategorised — to review later</option>
                 <optgroup label="Revenue (tax deductible)">
                   <option value="Mortgage interest">Mortgage interest</option>
@@ -304,15 +302,29 @@
                 </optgroup>
               </select>
             </div>
+            <!-- Mileage calculator (shown when category = Mileage) -->
+            <div class="form-row mileage-row hidden" id="mileage-row">
+              <label>Miles</label>
+              <div class="mileage-group">
+                <input type="number" id="expense-miles" step="0.1" min="0" placeholder="0" />
+                <span class="mileage-rate">× 45p/mi =</span>
+                <span class="mileage-total" id="mileage-total">£0.00</span>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Amount (£) <span class="required">*</span></label>
+              <input type="number" name="amount" id="expense-amount" step="0.01" min="0.01" placeholder="0.00" required />
+              <span class="field-error hidden" data-field="expense-amount">Please enter an amount.</span>
+            </div>
             <div class="form-row">
               <label>Supplier</label>
-              <input type="text" name="supplier" />
+              <input type="text" name="supplier" placeholder="Company or person paid" />
             </div>
             <div class="form-row">
               <label>Receipt</label>
               <div class="receipt-input-group">
                 <input type="text" name="receipt_ref" id="expense-receipt-ref" placeholder="Ref or filename" />
-                <button type="button" class="btn btn-icon" id="btn-camera" title="Take photo">
+                <button type="button" class="btn btn-icon" id="btn-camera" title="Upload photo">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                     <circle cx="12" cy="13" r="4"/>
@@ -320,13 +332,15 @@
                 </button>
               </div>
               <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" />
+              <div id="upload-status" class="upload-status hidden"></div>
+              <a id="receipt-preview-link" href="#" target="_blank" class="receipt-preview-link hidden">📎 View uploaded receipt →</a>
             </div>
             <div class="form-row">
               <label>Notes</label>
-              <textarea name="notes" rows="2"></textarea>
+              <textarea name="notes" rows="2" placeholder="Optional description"></textarea>
             </div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="submit" class="btn btn-primary" id="expense-submit-btn">Save expense</button>
               <button type="button" class="btn btn-ghost" id="btn-cancel-expense">Cancel</button>
             </div>
           </form>
@@ -346,6 +360,11 @@
 
         <div id="expense-ledger" class="ledger">
           <p class="empty-state">No expenses recorded yet.</p>
+        </div>
+
+        <div id="expense-ledger-total" class="ledger-total hidden">
+          <span>Filtered total</span>
+          <span id="expense-ledger-total-value">£0.00</span>
         </div>
       </section>
 

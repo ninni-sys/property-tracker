@@ -334,6 +334,7 @@ async function renderExpenseLedger() {
   const yearFilter = document.getElementById('expense-filter-year')?.value;
   const catFilter  = document.getElementById('expense-filter-category')?.value;
   const all = await dbGetAll('expenses');
+
   const rows = all
     .filter(r =>
       (!propFilter || r.property_id === propFilter) &&
@@ -342,31 +343,131 @@ async function renderExpenseLedger() {
     )
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const el = document.getElementById('expense-ledger');
+  _populateCategoryFilter(all);
+
+  const el       = document.getElementById('expense-ledger');
+  const totalBar = document.getElementById('expense-ledger-total');
+  const totalVal = document.getElementById('expense-ledger-total-value');
+
   if (rows.length === 0) {
     el.innerHTML = '<p class="empty-state">No expenses recorded yet.</p>';
+    totalBar?.classList.add('hidden');
     return;
   }
+
+  const filteredTotal = rows.reduce((s, r) => s + Number(r.amount), 0);
+  if (totalVal) totalVal.textContent = formatGBP(filteredTotal);
+  totalBar?.classList.remove('hidden');
+
   el.innerHTML = rows.map(r => {
-    const type = expenseType(r.category);
-    const typeClass = type === 'uncategorised' ? 'uncategorised' : type === 'capital' ? 'capital' : type === 'non-allowable' ? 'non-allowable' : '';
-    const tagClass  = type === 'uncategorised' ? 'warn' : type === 'capital' ? 'capital' : '';
+    const type      = expenseType(r.category);
+    const typeClass = { uncategorised: 'uncategorised', capital: 'capital', 'non-allowable': 'non-allowable' }[type] || '';
+    const tagClass  = { uncategorised: 'warn', capital: 'capital' }[type] || '';
+
+    const receiptHtml = isDriveFileId(r.receipt_ref)
+      ? `<a href="${getReceiptUrl(r.receipt_ref)}" target="_blank" class="tag receipt-tag" title="View in Drive">📎 Receipt</a>`
+      : r.receipt_ref
+        ? `<span class="tag" title="${r.receipt_ref}">📎 ${r.receipt_ref.slice(0, 18)}</span>`
+        : '';
+
     return `
-      <div class="ledger-item ${typeClass}">
+      <div class="ledger-item ${typeClass}" data-expense-id="${r.id}">
         <div class="ledger-item-header">
           <span class="ledger-item-title">${getPropertyName(r.property_id)}</span>
-          <span class="ledger-item-amount">−${formatGBP(r.amount)}</span>
+          <div class="ledger-item-right">
+            <span class="ledger-item-amount ${type === 'uncategorised' ? 'amount-warn' : ''}">−${formatGBP(r.amount)}</span>
+            <div class="ledger-item-actions">
+              <button class="btn btn-ghost btn-xs" data-edit-expense="${r.id}">Edit</button>
+              <button class="btn btn-danger btn-xs" data-delete-expense="${r.id}">Del</button>
+            </div>
+          </div>
         </div>
         <div class="ledger-item-meta">
           <span class="ledger-item-date">${formatDate(r.date)}</span>
           <span class="tag ${tagClass}">${r.category}</span>
           ${r.supplier ? `<span class="tag">${r.supplier}</span>` : ''}
           <span class="tag">${r.tax_year}</span>
+          ${receiptHtml}
         </div>
         ${r.notes ? `<div class="ledger-item-notes">${r.notes}</div>` : ''}
       </div>
     `;
   }).join('');
+
+  el.querySelectorAll('[data-edit-expense]').forEach(btn => {
+    btn.addEventListener('click', () => openExpenseForm(btn.dataset.editExpense));
+  });
+  el.querySelectorAll('[data-delete-expense]').forEach(btn => {
+    btn.addEventListener('click', () => deleteExpense(btn.dataset.deleteExpense));
+  });
+}
+
+function _populateCategoryFilter(allExpenses) {
+  const sel = document.getElementById('expense-filter-category');
+  if (!sel) return;
+  const current = sel.value;
+  const standardCats = [
+    'Uncategorised', 'Mortgage interest', 'Insurance',
+    'Letting agent / advertising', 'Repairs & maintenance', 'Utilities',
+    'Professional fees', 'Replacement furnishings', 'Mileage', 'Other allowable',
+    'Improvements', 'Personal / non-allowable',
+  ];
+  const usedCats = [...new Set(allExpenses.map(e => e.category))];
+  const merged   = [...new Set([...standardCats, ...usedCats])];
+  sel.innerHTML = '<option value="">All categories</option>' +
+    merged.map(c => `<option value="${c}"${c === current ? ' selected' : ''}>${c}</option>`).join('');
+}
+
+// ─── Open expense form (add or edit) ─────────────────────────
+function openExpenseForm(id) {
+  const panel       = document.getElementById('expense-form-panel');
+  const form        = document.getElementById('expense-form');
+  const titleEl     = document.getElementById('expense-form-title');
+  const mileRow     = document.getElementById('mileage-row');
+  const previewLink = document.getElementById('receipt-preview-link');
+  const uploadStat  = document.getElementById('upload-status');
+
+  panel.classList.remove('hidden');
+  form.reset();
+  mileRow.classList.add('hidden');
+  previewLink.classList.add('hidden');
+  uploadStat.classList.add('hidden');
+  document.querySelectorAll('#expense-form .field-error').forEach(e => e.classList.add('hidden'));
+
+  if (id) {
+    dbGet('expenses', id).then(r => {
+      if (!r) return;
+      titleEl.textContent              = 'Edit Expense';
+      form.elements['id'].value        = r.id;
+      form.elements['property_id'].value = r.property_id;
+      form.elements['date'].value      = r.date;
+      form.elements['amount'].value    = r.amount;
+      form.elements['category'].value  = r.category;
+      form.elements['supplier'].value  = r.supplier || '';
+      form.elements['receipt_ref'].value = isDriveFileId(r.receipt_ref) ? '' : (r.receipt_ref || '');
+      form.elements['notes'].value     = r.notes || '';
+      if (isDriveFileId(r.receipt_ref)) {
+        previewLink.href = getReceiptUrl(r.receipt_ref);
+        previewLink.classList.remove('hidden');
+      }
+      if (r.category === 'Mileage') mileRow.classList.remove('hidden');
+    });
+  } else {
+    titleEl.textContent             = 'Add Expense';
+    form.elements['date'].value     = new Date().toISOString().slice(0, 10);
+  }
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ─── Delete expense ───────────────────────────────────────────
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  await dbDelete('expenses', id);
+  _sheetsWrite('Expenses', 'delete', null, id);
+  await renderExpenseLedger();
+  await renderReviewList();
+  renderDashboard();
+  showToast('Expense deleted', 'warn');
 }
 
 // ─── To Review ────────────────────────────────────────────────
@@ -603,55 +704,129 @@ function initIncomeForm() {
 
 // ─── Form: expense ────────────────────────────────────────────
 function initExpenseForm() {
-  const btn    = document.getElementById('btn-add-expense');
-  const panel  = document.getElementById('expense-form-panel');
-  const form   = document.getElementById('expense-form');
-  const cancel = document.getElementById('btn-cancel-expense');
+  const btn         = document.getElementById('btn-add-expense');
+  const panel       = document.getElementById('expense-form-panel');
+  const form        = document.getElementById('expense-form');
+  const cancel      = document.getElementById('btn-cancel-expense');
+  const catSel      = document.getElementById('expense-category-select');
+  const mileRow     = document.getElementById('mileage-row');
+  const milesIn     = document.getElementById('expense-miles');
+  const mileTot     = document.getElementById('mileage-total');
+  const amtIn       = document.getElementById('expense-amount');
   const cameraBtn   = document.getElementById('btn-camera');
   const cameraInput = document.getElementById('camera-input');
+  const uploadStat  = document.getElementById('upload-status');
+  const previewLink = document.getElementById('receipt-preview-link');
+  const submitBtn   = document.getElementById('expense-submit-btn');
 
-  btn.addEventListener('click', () => {
-    panel.classList.remove('hidden');
-    form.reset();
-    form.date.value = new Date().toISOString().slice(0, 10);
-  });
-
+  btn.addEventListener('click', () => openExpenseForm(null));
   cancel.addEventListener('click', () => panel.classList.add('hidden'));
 
+  // Show/hide mileage calculator based on category
+  catSel.addEventListener('change', () => {
+    const isMileage = catSel.value === 'Mileage';
+    mileRow.classList.toggle('hidden', !isMileage);
+    if (!isMileage) { milesIn.value = ''; mileTot.textContent = '£0.00'; }
+  });
+
+  // Mileage auto-calc — HMRC 45p/mile approved rate
+  milesIn.addEventListener('input', () => {
+    const total = (parseFloat(milesIn.value) || 0) * 0.45;
+    mileTot.textContent = formatGBP(total);
+    if (total > 0) amtIn.value = total.toFixed(2);
+  });
+
+  // Camera / file upload with progress
   cameraBtn.addEventListener('click', () => cameraInput.click());
+
   cameraInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const ref = await uploadReceipt(file, `receipt-${Date.now()}`);
-    const refInput = document.getElementById('expense-receipt-ref');
-    if (ref) refInput.value = ref;
-    else refInput.value = file.name;
+
+    cameraBtn.disabled = true;
+    uploadStat.textContent = 'Uploading…';
+    uploadStat.classList.remove('hidden', 'upload-error');
+    previewLink.classList.add('hidden');
+
+    try {
+      const stamp    = new Date().toISOString().slice(0, 10);
+      const filename = `receipt-${stamp}-${file.name}`;
+      const fileId   = await uploadReceipt(file, filename, (pct) => {
+        uploadStat.textContent = `Uploading… ${pct}%`;
+      });
+
+      if (fileId) {
+        document.getElementById('expense-receipt-ref').value = fileId;
+        previewLink.href = getReceiptUrl(fileId);
+        previewLink.classList.remove('hidden');
+        uploadStat.textContent = '✓ Uploaded to Drive';
+        setTimeout(() => uploadStat.classList.add('hidden'), 3000);
+      } else {
+        document.getElementById('expense-receipt-ref').value = file.name;
+        uploadStat.textContent = 'Saved filename (Drive upload unavailable)';
+      }
+    } catch (err) {
+      uploadStat.textContent = `Upload failed — ${err.message}`;
+      uploadStat.classList.add('upload-error');
+      document.getElementById('expense-receipt-ref').value = file.name;
+    } finally {
+      cameraBtn.disabled = false;
+      cameraInput.value  = '';
+    }
   });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fd = new FormData(form);
-    const record = {
-      id:          generateId(),
-      property_id: fd.get('property_id'),
-      date:        fd.get('date'),
-      tax_year:    getTaxYear(fd.get('date')),
-      amount:      parseFloat(fd.get('amount')),
-      category:    fd.get('category'),
-      supplier:    fd.get('supplier'),
-      receipt_ref: fd.get('receipt_ref'),
-      notes:       fd.get('notes'),
-      is_capital:  fd.get('category') === 'Improvements' ? 1 : 0,
-      status:      'active',
-    };
-    await dbPut('expenses', record);
-    _sheetsWrite('Expenses', 'append', record);
-    panel.classList.add('hidden');
-    form.reset();
-    await renderExpenseLedger();
-    await renderReviewList();
-    renderDashboard();
-    showToast('Expense saved ✓', 'success');
+
+    // Inline validation
+    let valid = true;
+    const propSel = form.elements['property_id'];
+    const propErr = form.querySelector('[data-field="expense-property"]');
+    const amtErr  = form.querySelector('[data-field="expense-amount"]');
+
+    if (!propSel.value) { propErr.classList.remove('hidden'); valid = false; }
+    else propErr.classList.add('hidden');
+
+    if (!amtIn.value || parseFloat(amtIn.value) <= 0) { amtErr.classList.remove('hidden'); valid = false; }
+    else amtErr.classList.add('hidden');
+
+    if (!valid) return;
+
+    const origText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const fd         = new FormData(form);
+      const existingId = fd.get('id');
+      const id         = existingId || generateId();
+      const isNew      = !existingId;
+      const category   = fd.get('category');
+      const record = {
+        id,
+        property_id: fd.get('property_id'),
+        date:        fd.get('date'),
+        tax_year:    getTaxYear(fd.get('date')),
+        amount:      parseFloat(fd.get('amount')),
+        category,
+        supplier:    fd.get('supplier'),
+        receipt_ref: fd.get('receipt_ref'),
+        notes:       fd.get('notes'),
+        is_capital:  category === 'Improvements' ? 1 : 0,
+        status:      'active',
+      };
+      await dbPut('expenses', record);
+      _sheetsWrite('Expenses', isNew ? 'append' : 'update', record);
+      panel.classList.add('hidden');
+      form.reset();
+      await renderExpenseLedger();
+      await renderReviewList();
+      renderDashboard();
+      showToast(`Expense ${isNew ? 'saved' : 'updated'} ✓`, 'success');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
   });
 }
 

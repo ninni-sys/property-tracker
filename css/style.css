@@ -444,8 +444,8 @@ tfoot .tfoot-total th { color: var(--text); font-size: .85rem; border-top: 2px s
 }
 
 .ledger-item.uncategorised { border-left: 3px solid var(--warn); }
-.ledger-item.capital { border-left: 3px solid var(--primary-light); }
-.ledger-item.non-allowable { border-left: 3px solid var(--text-dim); }
+.ledger-item.capital        { border-left: 3px solid var(--primary-light); }
+.ledger-item.non-allowable  { border-left: 3px solid var(--text-dim); }
 
 .ledger-item-header {
   display: flex;
@@ -457,6 +457,20 @@ tfoot .tfoot-total th { color: var(--text); font-size: .85rem; border-top: 2px s
 .ledger-item-title {
   font-weight: 600;
   font-size: .9rem;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right side of header: amount + action buttons */
+.ledger-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .ledger-item-amount {
@@ -465,14 +479,59 @@ tfoot .tfoot-total th { color: var(--text); font-size: .85rem; border-top: 2px s
   white-space: nowrap;
 }
 
+.ledger-item-amount.income-amount { color: var(--accent); }
+.ledger-item-amount.amount-warn   { color: var(--warn); }
+
+.ledger-item-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.ledger-item:hover .ledger-item-actions { opacity: 1; }
+
+/* Always show actions on touch (no hover state) */
+@media (hover: none) {
+  .ledger-item-actions { opacity: 1; }
+}
+
 .ledger-item-meta {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   align-items: center;
 }
 
 .ledger-item-date { font-size: .75rem; color: var(--text-muted); }
+
+.ledger-item-notes {
+  font-size: .8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* Ledger running total bar */
+.ledger-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: .85rem;
+  font-weight: 600;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+.ledger-total span:last-child { color: var(--text); }
+
+/* Receipt tag link */
+.receipt-tag { color: var(--primary-light) !important; text-decoration: none; cursor: pointer; }
+.receipt-tag:hover { background: rgba(79,70,229,.2) !important; }
 
 .tag {
   font-size: .65rem;
@@ -623,6 +682,50 @@ textarea { resize: vertical; min-height: 64px; }
 .btn-large { padding: 14px 28px; font-size: 1rem; border-radius: var(--radius); }
 
 .btn-sm { padding: 7px 14px; font-size: .8rem; }
+
+.btn-xs { padding: 3px 9px; font-size: .72rem; }
+
+/* ─── Upload status & receipt preview ───────────────────────── */
+.upload-status {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.upload-status.upload-error { color: var(--danger); }
+
+.receipt-preview-link {
+  display: inline-block;
+  font-size: .78rem;
+  color: var(--primary-light);
+  margin-top: 4px;
+  text-decoration: none;
+}
+
+.receipt-preview-link:hover { text-decoration: underline; }
+
+/* ─── Mileage calculator row ────────────────────────────────── */
+.mileage-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mileage-group input { flex: 1; min-width: 80px; }
+
+.mileage-rate {
+  font-size: .82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.mileage-total {
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  min-width: 64px;
+}
 
 /* ─── Properties list ───────────────────────────────────────── */
 .property-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
