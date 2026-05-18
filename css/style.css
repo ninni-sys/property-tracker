@@ -254,7 +254,9 @@ body {
   padding: 16px 14px;
 }
 
-.metric-card.metric-warn { border-color: var(--warn); }
+.metric-card.metric-warn     { border-color: var(--warn); }
+.metric-card.metric-positive { border-color: var(--accent); }
+.metric-card.metric-negative { border-color: var(--danger); }
 
 .metric-label {
   font-size: .7rem;
@@ -270,40 +272,143 @@ body {
   color: var(--text);
 }
 
-.metric-card.metric-warn .metric-value { color: var(--warn); }
-
-/* ─── Net position panel ────────────────────────────────────── */
-.net-position { display: flex; flex-direction: column; gap: 8px; }
-
-.net-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: .9rem;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.net-row:last-child { border-bottom: none; }
-
-.net-subtotal {
-  font-weight: 600;
-  color: var(--text);
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.net-credit span:last-child { color: var(--accent); }
-
-.net-warn {
-  background: rgba(245, 158, 11, .08);
-  border-radius: var(--radius-sm);
-  padding: 8px;
-  border: 1px solid rgba(245, 158, 11, .3);
-  color: var(--warn);
-  border-bottom: none;
+.metric-sub {
+  font-size: .72rem;
+  color: var(--text-dim);
   margin-top: 4px;
 }
+
+.metric-card.metric-warn     .metric-value { color: var(--warn); }
+.metric-card.metric-positive .metric-value { color: var(--accent); }
+.metric-card.metric-negative .metric-value { color: var(--danger); }
+
+/* ─── Uncategorised alert banner ────────────────────────────── */
+.uncat-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.35);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: .85rem;
+  color: var(--warn);
+  flex-wrap: wrap;
+}
+
+.uncat-alert-icon { font-size: 1rem; flex-shrink: 0; }
+
+.uncat-alert span:nth-child(2) { flex: 1; min-width: 180px; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--warn);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* ─── Tax computation panel ─────────────────────────────────── */
+.tax-computation {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+.tax-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .88rem;
+}
+
+.tax-row:last-child { border-bottom: none; }
+
+.tax-label { color: var(--text-muted); flex: 1; }
+.tax-value  { font-weight: 600; white-space: nowrap; }
+
+.tax-note-inline {
+  font-size: .75rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.tax-row--deduction .tax-value  { color: var(--danger); }
+.tax-row--mortgage  .tax-label  { color: var(--text-dim); font-size: .82rem; }
+.tax-row--mortgage  .tax-value  { color: var(--text-dim); font-size: .88rem; }
+.tax-row--credit .tax-value     { color: var(--accent); }
+.tax-row--alt .tax-label,
+.tax-row--alt .tax-value        { color: var(--text-dim); }
+
+.tax-row--subtotal {
+  background: rgba(79,70,229,.06);
+  border-radius: var(--radius-sm);
+  padding: 10px 10px;
+  margin: 2px -10px;
+  border-bottom: none;
+}
+.tax-row--subtotal .tax-label { color: var(--text); font-weight: 600; }
+.tax-row--subtotal .tax-value { font-size: 1.05rem; }
+
+.tax-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.tax-row--total {
+  border-top: 2px solid var(--primary);
+  padding-top: 10px;
+}
+.tax-row--total .tax-label { color: var(--text); font-weight: 600; }
+
+.tax-value--highlight { color: var(--primary-light); font-size: 1rem; }
+.tax-value--higher    { color: var(--text-muted); }
+
+.tax-row--higher-total .tax-label { color: var(--text-muted); font-weight: 400; }
+
+.tax-disclaimer {
+  font-size: .75rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 6px;
+}
+
+/* ─── Capital note ───────────────────────────────────────────── */
+.capital-note {
+  font-size: .82rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+/* ─── Table foot totals & amount colours ─────────────────────── */
+tfoot .tfoot-total th { color: var(--text); font-size: .85rem; border-top: 2px solid var(--border); }
+.amount-positive { color: var(--accent); font-weight: 600; }
+.amount-negative { color: var(--danger); font-weight: 600; }
+.pct-cell        { color: var(--text-muted); text-align: right; font-size: .8rem; }
+
+/* ─── Per-property breakdown table ──────────────────────────── */
+.breakdown-table .prop-breakdown-name { font-weight: 500; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ─── Net position panel (legacy — kept for compatibility) ─── */
+.net-position { display: flex; flex-direction: column; gap: 8px; }
+.net-row { display: flex; justify-content: space-between; align-items: center; font-size: .9rem; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.net-row:last-child { border-bottom: none; }
+.net-subtotal { font-weight: 600; }
+.net-credit span:last-child { color: var(--accent); }
+.net-warn { background: rgba(245,158,11,.08); border-radius: var(--radius-sm); padding: 8px; border: 1px solid rgba(245,158,11,.3); color: var(--warn); border-bottom: none; margin-top: 4px; }
 
 /* ─── Filters ───────────────────────────────────────────────── */
 .filters {

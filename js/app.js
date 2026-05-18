@@ -118,7 +118,7 @@ async function renderDashboard() {
     dbGetAll('expenses'),
   ]);
 
-  const income   = allIncome.filter(r =>
+  const income = allIncome.filter(r =>
     (!propFilter || r.property_id === propFilter) &&
     (!yearFilter || r.tax_year === yearFilter)
   );
@@ -127,53 +127,173 @@ async function renderDashboard() {
     (!yearFilter || r.tax_year === yearFilter)
   );
 
-  const totalIncome = income.reduce((s, r) => s + Number(r.amount), 0);
+  const totalIncome     = income.reduce((s, r) => s + Number(r.amount), 0);
+  const mortgageItems   = expenses.filter(e => expenseType(e.category) === 'mortgage');
+  const allowableItems  = expenses.filter(e => expenseType(e.category) === 'revenue');
+  const capitalItems    = expenses.filter(e => expenseType(e.category) === 'capital');
+  const uncatItems      = expenses.filter(e => expenseType(e.category) === 'uncategorised');
 
-  const mortgage      = expenses.filter(e => expenseType(e.category) === 'mortgage').reduce((s,e) => s+Number(e.amount),0);
-  const allowable     = expenses.filter(e => expenseType(e.category) === 'revenue').reduce((s,e) => s+Number(e.amount),0);
-  const uncategorised = expenses.filter(e => expenseType(e.category) === 'uncategorised');
-  const uncatTotal    = uncategorised.reduce((s,e) => s+Number(e.amount),0);
-  const categorised   = mortgage + allowable;
-  const netProfit     = totalIncome - allowable;
-  const credit        = mortgageTaxCredit(mortgage);
+  const mortgage    = mortgageItems.reduce((s, e) => s + Number(e.amount), 0);
+  const allowable   = allowableItems.reduce((s, e) => s + Number(e.amount), 0);
+  const capital     = capitalItems.reduce((s, e) => s + Number(e.amount), 0);
+  const uncatTotal  = uncatItems.reduce((s, e) => s + Number(e.amount), 0);
 
-  document.getElementById('dash-total-income').textContent       = formatGBP(totalIncome);
-  document.getElementById('dash-total-expenses').textContent     = formatGBP(categorised);
-  document.getElementById('dash-net-profit').textContent         = formatGBP(netProfit);
-  document.getElementById('dash-uncategorised-count').textContent = `${uncategorised.length} item${uncategorised.length !== 1 ? 's' : ''}`;
+  // UK rental income tax logic
+  const netProfit        = totalIncome - allowable;
+  const credit           = mortgageTaxCredit(mortgage); // mortgage × 20%
+  const taxGrossBasic    = Math.max(0, netProfit) * 0.20;
+  const taxGrossHigher   = Math.max(0, netProfit) * 0.40;
+  const taxPayableBasic  = Math.max(0, taxGrossBasic  - credit);
+  const taxPayableHigher = Math.max(0, taxGrossHigher - credit);
 
-  document.getElementById('np-income').textContent    = formatGBP(totalIncome);
-  document.getElementById('np-allowable').textContent = `−${formatGBP(allowable)}`;
-  document.getElementById('np-profit').textContent    = formatGBP(netProfit);
-  document.getElementById('np-mortgage').textContent  = `−${formatGBP(mortgage)}`;
-  document.getElementById('np-credit').textContent    = formatGBP(credit);
-  document.getElementById('np-uncategorised').textContent = formatGBP(uncatTotal);
+  // ── Metric cards ──────────────────────────────────────────
+  document.getElementById('dash-total-income').textContent  = formatGBP(totalIncome);
+  document.getElementById('dash-income-sub').textContent    = `${income.length} record${income.length !== 1 ? 's' : ''}`;
+  document.getElementById('dash-total-expenses').textContent = formatGBP(allowable);
+  document.getElementById('dash-expenses-sub').textContent  = `${allowableItems.length} item${allowableItems.length !== 1 ? 's' : ''} · excl. mortgage`;
 
-  const uncatRow = document.getElementById('np-uncategorised-row');
-  if (uncatRow) uncatRow.style.display = uncatTotal > 0 ? '' : 'none';
+  const npEl   = document.getElementById('dash-net-profit');
+  const npCard = document.getElementById('dash-net-profit-card');
+  npEl.textContent = formatGBP(netProfit);
+  npCard.classList.toggle('metric-positive', netProfit > 0);
+  npCard.classList.toggle('metric-negative', netProfit < 0 && totalIncome > 0);
 
-  // Income table
+  document.getElementById('dash-uncategorised-count').textContent  = `${uncatItems.length} item${uncatItems.length !== 1 ? 's' : ''}`;
+  document.getElementById('dash-uncategorised-amount').textContent = formatGBP(uncatTotal);
+
+  // ── Uncategorised alert banner ────────────────────────────
+  const alertEl   = document.getElementById('dash-uncat-alert');
+  const alertText = document.getElementById('dash-uncat-alert-text');
+  if (uncatItems.length > 0) {
+    alertText.textContent = `${uncatItems.length} expense${uncatItems.length !== 1 ? 's' : ''} totalling ${formatGBP(uncatTotal)} need categorising and are excluded from the tax calculation.`;
+    alertEl.classList.remove('hidden');
+  } else {
+    alertEl.classList.add('hidden');
+  }
+
+  // ── Tax computation panel ─────────────────────────────────
+  document.getElementById('tc-income').textContent      = formatGBP(totalIncome);
+  document.getElementById('tc-allowable').textContent   = `−${formatGBP(allowable)}`;
+  const tcNetEl = document.getElementById('tc-net-profit');
+  tcNetEl.textContent   = formatGBP(netProfit);
+  tcNetEl.style.color   = netProfit < 0 ? 'var(--danger)' : netProfit > 0 ? 'var(--accent)' : '';
+  document.getElementById('tc-mortgage').textContent    = formatGBP(mortgage);
+  document.getElementById('tc-tax-basic').textContent   = formatGBP(taxGrossBasic);
+  document.getElementById('tc-tax-higher').textContent  = formatGBP(taxGrossHigher);
+  document.getElementById('tc-credit').textContent      = `−${formatGBP(credit)}`;
+  document.getElementById('tc-payable-basic').textContent  = formatGBP(taxPayableBasic);
+  document.getElementById('tc-payable-higher').textContent = formatGBP(taxPayableHigher);
+
+  // ── Capital improvements section ──────────────────────────
+  const capitalCard = document.getElementById('dash-capital-card');
+  if (capitalItems.length > 0) {
+    capitalCard.classList.remove('hidden');
+    const rows = capitalItems
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(e => `<tr>
+        <td>${getPropertyName(e.property_id)}</td>
+        <td>${formatDate(e.date)}</td>
+        <td>${e.supplier || '—'}</td>
+        <td>${e.notes || '—'}</td>
+        <td>${formatGBP(e.amount)}</td>
+      </tr>`).join('');
+    document.getElementById('dash-capital-table').innerHTML = `
+      <table>
+        <thead><tr><th>Property</th><th>Date</th><th>Supplier</th><th>Description</th><th>Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="tfoot-total"><th colspan="4">Total capital costs</th><th>${formatGBP(capital)}</th></tr></tfoot>
+      </table>`;
+  } else {
+    capitalCard.classList.add('hidden');
+  }
+
+  // ── Per-property breakdown ────────────────────────────────
+  const propBreakdownEl = document.getElementById('dash-property-breakdown');
+  const propsToShow = propFilter ? _properties.filter(p => p.id === propFilter) : _properties;
+
+  if (propsToShow.length === 0 || (totalIncome === 0 && allowable === 0 && mortgage === 0)) {
+    propBreakdownEl.innerHTML = '<p class="empty-state">No data yet.</p>';
+  } else {
+    const rows = propsToShow.map(prop => {
+      const pIncome    = income.filter(r => r.property_id === prop.id).reduce((s, r) => s + Number(r.amount), 0);
+      const pAllowable = expenses.filter(e => e.property_id === prop.id && expenseType(e.category) === 'revenue').reduce((s, e) => s + Number(e.amount), 0);
+      const pMortgage  = expenses.filter(e => e.property_id === prop.id && expenseType(e.category) === 'mortgage').reduce((s, e) => s + Number(e.amount), 0);
+      const pProfit    = pIncome - pAllowable;
+      const pCredit    = mortgageTaxCredit(pMortgage);
+      return `<tr>
+        <td class="prop-breakdown-name">${prop.name}</td>
+        <td>${formatGBP(pIncome)}</td>
+        <td>${formatGBP(pAllowable)}</td>
+        <td>${formatGBP(pMortgage)}</td>
+        <td class="${pProfit >= 0 ? 'amount-positive' : 'amount-negative'}">${formatGBP(pProfit)}</td>
+        <td class="amount-positive">${formatGBP(pCredit)}</td>
+      </tr>`;
+    }).join('');
+    propBreakdownEl.innerHTML = `
+      <table class="breakdown-table">
+        <thead><tr>
+          <th>Property</th><th>Income</th><th>Expenses</th>
+          <th>Mortgage</th><th>Net Profit</th><th>Tax Credit</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Income by type ────────────────────────────────────────
   const incomeByType = {};
   income.forEach(r => { incomeByType[r.type] = (incomeByType[r.type] || 0) + Number(r.amount); });
   const incomeTableEl = document.getElementById('dash-income-table');
   if (Object.keys(incomeByType).length === 0) {
     incomeTableEl.innerHTML = '<p class="empty-state">No income recorded yet.</p>';
   } else {
-    const rows = Object.entries(incomeByType).map(([type, amt]) =>
-      `<tr><td>${type}</td><td>${formatGBP(amt)}</td></tr>`).join('');
-    incomeTableEl.innerHTML = `<table><thead><tr><th>Type</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const incTotal = Object.values(incomeByType).reduce((a, b) => a + b, 0);
+    const rows = Object.entries(incomeByType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, amt]) => {
+        const pct = incTotal > 0 ? Math.round(amt / incTotal * 100) : 0;
+        return `<tr><td>${type}</td><td>${formatGBP(amt)}</td><td class="pct-cell">${pct}%</td></tr>`;
+      }).join('');
+    incomeTableEl.innerHTML = `
+      <table>
+        <thead><tr><th>Type</th><th>Amount</th><th>%</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="tfoot-total"><th>Total</th><th>${formatGBP(incTotal)}</th><th>100%</th></tr></tfoot>
+      </table>`;
   }
 
-  // Expense table
+  // ── Expenses by category ──────────────────────────────────
+  // Include mortgage + allowable + capital; exclude uncategorised
   const expByCategory = {};
-  expenses.forEach(r => { expByCategory[r.category] = (expByCategory[r.category] || 0) + Number(r.amount); });
+  const expTypeMap    = {};
+  expenses.forEach(r => {
+    const type = expenseType(r.category);
+    if (type === 'uncategorised' || type === 'non-allowable') return;
+    expByCategory[r.category] = (expByCategory[r.category] || 0) + Number(r.amount);
+    expTypeMap[r.category] = type;
+  });
   const expTableEl = document.getElementById('dash-expense-table');
   if (Object.keys(expByCategory).length === 0) {
-    expTableEl.innerHTML = '<p class="empty-state">No expenses recorded yet.</p>';
+    expTableEl.innerHTML = uncatItems.length > 0
+      ? '<p class="empty-state">All expenses are uncategorised — use the Review tab to categorise them.</p>'
+      : '<p class="empty-state">No expenses recorded yet.</p>';
   } else {
-    const rows = Object.entries(expByCategory).map(([cat, amt]) =>
-      `<tr><td>${cat}</td><td>${formatGBP(amt)}</td></tr>`).join('');
-    expTableEl.innerHTML = `<table><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const expTotal = Object.values(expByCategory).reduce((a, b) => a + b, 0);
+    const rows = Object.entries(expByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, amt]) => {
+        const type  = expTypeMap[cat];
+        const badge = type === 'mortgage' ? '<span class="tag">Mortgage</span>'
+                    : type === 'capital'  ? '<span class="tag capital">Capital</span>'
+                    : '';
+        const pct   = expTotal > 0 ? Math.round(amt / expTotal * 100) : 0;
+        return `<tr><td>${cat} ${badge}</td><td>${formatGBP(amt)}</td><td class="pct-cell">${pct}%</td></tr>`;
+      }).join('');
+    expTableEl.innerHTML = `
+      <table>
+        <thead><tr><th>Category</th><th>Amount</th><th>%</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="tfoot-total"><th>Total (incl. mortgage)</th><th>${formatGBP(expTotal)}</th><th>100%</th></tr></tfoot>
+      </table>`;
   }
 }
 
@@ -818,6 +938,12 @@ async function init() {
   // Dashboard filters
   document.getElementById('dash-filter-property')?.addEventListener('change', renderDashboard);
   document.getElementById('dash-filter-year')?.addEventListener('change', renderDashboard);
+
+  // Dashboard — uncategorised alert link
+  document.getElementById('dash-uncat-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    navigateTo('review');
+  });
 
   // Income filters
   document.getElementById('income-filter-property')?.addEventListener('change', renderIncomeLedger);

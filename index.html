@@ -80,62 +80,110 @@
           </div>
         </div>
 
+        <!-- Summary metric cards -->
         <div class="metric-grid">
           <div class="metric-card">
-            <div class="metric-label">Total Income</div>
-            <div class="metric-value" id="dash-total-income">£0</div>
+            <div class="metric-label">Rental Income</div>
+            <div class="metric-value" id="dash-total-income">£0.00</div>
+            <div class="metric-sub" id="dash-income-sub">0 records</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Categorised Expenses</div>
-            <div class="metric-value" id="dash-total-expenses">£0</div>
+            <div class="metric-label">Allowable Expenses</div>
+            <div class="metric-value" id="dash-total-expenses">£0.00</div>
+            <div class="metric-sub" id="dash-expenses-sub">excl. mortgage</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card" id="dash-net-profit-card">
             <div class="metric-label">Net Profit</div>
-            <div class="metric-value" id="dash-net-profit">£0</div>
+            <div class="metric-value" id="dash-net-profit">£0.00</div>
+            <div class="metric-sub">before mortgage credit</div>
           </div>
-          <div class="metric-card metric-warn">
-            <div class="metric-label">Uncategorised</div>
+          <div class="metric-card metric-warn" id="dash-review-card">
+            <div class="metric-label">Needs Review</div>
             <div class="metric-value" id="dash-uncategorised-count">0 items</div>
+            <div class="metric-sub" id="dash-uncategorised-amount">£0.00</div>
           </div>
         </div>
 
+        <!-- Uncategorised warning banner -->
+        <div id="dash-uncat-alert" class="uncat-alert hidden">
+          <span class="uncat-alert-icon">⚠</span>
+          <span id="dash-uncat-alert-text"></span>
+          <button class="btn-link" id="dash-uncat-link">Review now →</button>
+        </div>
+
+        <!-- UK Self-Assessment tax computation -->
         <div class="card">
-          <h3>Net Tax Position</h3>
-          <div class="net-position" id="dash-net-position">
-            <div class="net-row">
-              <span>Rental income</span>
-              <span id="np-income">£0</span>
+          <h3>Self-Assessment Estimate</h3>
+          <div class="tax-computation">
+            <div class="tax-row">
+              <span class="tax-label">Total rental income</span>
+              <span class="tax-value" id="tc-income">£0.00</span>
             </div>
-            <div class="net-row">
-              <span>Other allowable expenses</span>
-              <span id="np-allowable">−£0</span>
+            <div class="tax-row tax-row--deduction">
+              <span class="tax-label">Less: allowable revenue expenses</span>
+              <span class="tax-value" id="tc-allowable">−£0.00</span>
             </div>
-            <div class="net-row net-subtotal">
-              <span>Net profit before mortgage relief</span>
-              <span id="np-profit">£0</span>
+            <div class="tax-row tax-row--subtotal">
+              <span class="tax-label">Net rental profit (taxable)</span>
+              <span class="tax-value" id="tc-net-profit">£0.00</span>
             </div>
-            <div class="net-row">
-              <span>Mortgage interest paid</span>
-              <span id="np-mortgage">−£0</span>
+            <div class="tax-row tax-row--mortgage">
+              <span class="tax-label">Mortgage interest paid <span class="tax-note-inline">(not deductible)</span></span>
+              <span class="tax-value" id="tc-mortgage">£0.00</span>
             </div>
-            <div class="net-row net-credit">
-              <span>20% mortgage interest tax credit</span>
-              <span id="np-credit">£0</span>
+            <div class="tax-divider"></div>
+            <div class="tax-row">
+              <span class="tax-label">Tax on profit — basic rate (20%)</span>
+              <span class="tax-value" id="tc-tax-basic">£0.00</span>
             </div>
-            <div class="net-row net-warn" id="np-uncategorised-row">
-              <span>⚠ Uncategorised (excluded)</span>
-              <span id="np-uncategorised">£0</span>
+            <div class="tax-row tax-row--alt">
+              <span class="tax-label">Tax on profit — higher rate (40%)</span>
+              <span class="tax-value" id="tc-tax-higher">£0.00</span>
             </div>
+            <div class="tax-row tax-row--credit">
+              <span class="tax-label">Less: 20% mortgage interest tax credit</span>
+              <span class="tax-value" id="tc-credit">−£0.00</span>
+            </div>
+            <div class="tax-row tax-row--total">
+              <span class="tax-label">Estimated tax — basic rate taxpayer</span>
+              <span class="tax-value tax-value--highlight" id="tc-payable-basic">£0.00</span>
+            </div>
+            <div class="tax-row tax-row--total tax-row--higher-total">
+              <span class="tax-label">Estimated tax — higher rate taxpayer</span>
+              <span class="tax-value tax-value--highlight tax-value--higher" id="tc-payable-higher">£0.00</span>
+            </div>
+          </div>
+          <p class="tax-disclaimer">
+            Since 2020/21, mortgage interest cannot be deducted from rental profit. Instead a 20% basic-rate
+            tax credit is applied against your tax bill. Capital improvement costs are excluded here — they affect
+            your CGT cost base only. These are estimates only; always confirm with an accountant.
+          </p>
+        </div>
+
+        <!-- Capital improvements (shown only when present) -->
+        <div class="card hidden" id="dash-capital-card">
+          <h3>Capital Improvements</h3>
+          <p class="capital-note">Not deductible from rental income — these costs increase your CGT cost base and reduce any future gain on disposal.</p>
+          <div id="dash-capital-table" class="data-table-wrapper"></div>
+        </div>
+
+        <!-- Per-property breakdown -->
+        <div class="card">
+          <h3>Per-Property Breakdown</h3>
+          <div id="dash-property-breakdown" class="data-table-wrapper">
+            <p class="empty-state">No data yet.</p>
           </div>
         </div>
 
+        <!-- Income by type -->
         <div class="card">
-          <h3>Income Breakdown</h3>
+          <h3>Income by Type</h3>
           <div id="dash-income-table" class="data-table-wrapper">
             <p class="empty-state">No income recorded yet.</p>
           </div>
         </div>
 
+        <!-- Expenses by category -->
         <div class="card">
           <h3>Expenses by Category</h3>
           <div id="dash-expense-table" class="data-table-wrapper">
