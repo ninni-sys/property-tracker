@@ -651,21 +651,70 @@ async function renderGmailResults(results) {
   });
 }
 
+// ─── Screen helpers ───────────────────────────────────────────
+function showLoginScreen() {
+  document.getElementById('screen-login').classList.add('active');
+  document.getElementById('screen-app').classList.remove('active');
+}
+
+function showAppScreen() {
+  document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-app').classList.add('active');
+}
+
+// ─── Load all app data and renders after auth ─────────────────
+async function loadAppData() {
+  await loadProperties();
+  populateTaxYearSelects();
+  await Promise.all([
+    renderDashboard(),
+    renderIncomeLedger(),
+    renderExpenseLedger(),
+    renderReviewList(),
+    renderCGT(),
+    renderPropertyList(),
+  ]);
+}
+
+// ─── Sign-in handler ──────────────────────────────────────────
+async function handleSignIn() {
+  const btn = document.getElementById('btn-signin');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  try {
+    await signIn();
+    showAppScreen();
+    await loadAppData();
+  } catch (err) {
+    const errEl = document.getElementById('login-error');
+    if (errEl && err.message !== 'sign_in_cancelled') {
+      errEl.textContent = 'Sign in failed — ' + err.message;
+      errEl.classList.remove('hidden');
+      setTimeout(() => errEl.classList.add('hidden'), 6000);
+    }
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+// ─── Sign-out handler ─────────────────────────────────────────
+function handleSignOut() {
+  signOut();
+  showLoginScreen();
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 async function init() {
-  // Check for missing config
   if (window.__configMissing) {
     console.warn('config.js not found — copy config.example.js to config.js and fill in your credentials');
   }
 
   initSync();
 
-  // For now, skip auth and go straight to app shell (Phase 2 will wire up real auth)
-  document.getElementById('screen-login').classList.remove('active');
-  document.getElementById('screen-app').classList.add('active');
-
-  await loadProperties();
-  populateTaxYearSelects();
+  // Wire sign-in / sign-out
+  document.getElementById('btn-signin')?.addEventListener('click', handleSignIn);
+  document.getElementById('btn-signout')?.addEventListener('click', handleSignOut);
 
   // Nav routing
   document.querySelectorAll('.nav-item').forEach(btn => {
@@ -689,16 +738,6 @@ async function init() {
   initIncomeForm();
   initExpenseForm();
   initPropertyForm();
-
-  // Sign-out (stub until Phase 2)
-  document.getElementById('btn-signout')?.addEventListener('click', () => {
-    signOut();
-    document.getElementById('screen-app').classList.remove('active');
-    document.getElementById('screen-login').classList.add('active');
-  });
-
-  // Sign-in
-  document.getElementById('btn-signin')?.addEventListener('click', signIn);
 
   // Export / import
   document.getElementById('btn-export')?.addEventListener('click', exportJSON);
@@ -729,13 +768,29 @@ async function init() {
   window.addEventListener('offline', () => banner.classList.remove('hidden'));
   if (!navigator.onLine) banner.classList.remove('hidden');
 
-  // Initial renders
-  await renderDashboard();
-  await renderIncomeLedger();
-  await renderExpenseLedger();
-  await renderReviewList();
-  await renderCGT();
-  await renderPropertyList();
+  // Show checking state while auth resolves
+  const signinBtn = document.getElementById('btn-signin');
+  if (signinBtn) { signinBtn.disabled = true; signinBtn.textContent = 'Checking…'; }
+
+  const authed = await initAuth();
+
+  if (authed) {
+    showAppScreen();
+    await loadAppData();
+  } else {
+    // Restore sign-in button
+    if (signinBtn) {
+      signinBtn.disabled = false;
+      signinBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 20-9 20-20 0-1.3-.1-2.7-.4-4z"/>
+          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+          <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.2 0-9.7-2.8-11.4-7.2l-6.5 5C9.5 39.7 16.2 44 24 44z"/>
+          <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.9 2.5-2.5 4.6-4.6 6l6.2 5.2C40.1 36.1 44 30.6 44 24c0-1.3-.1-2.7-.4-4z"/>
+        </svg>
+        Sign in with Google`;
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
