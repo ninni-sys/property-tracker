@@ -137,6 +137,18 @@ body {
 .sync-indicator.pending .sync-label { color: var(--warn); }
 .sync-indicator.error   .sync-label { color: var(--danger); }
 
+.sync-badge {
+  background: var(--warn);
+  color: #000;
+  font-size: .65rem;
+  font-weight: 800;
+  border-radius: 9px;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.4;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .4; }

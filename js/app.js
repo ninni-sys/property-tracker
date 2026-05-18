@@ -27,6 +27,15 @@ function showToast(msg, type = '', duration = 2800) {
   el._timer = setTimeout(() => { el.className = 'toast hidden'; }, duration);
 }
 
+// ─── Escape HTML ─────────────────────────────────────────────
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ─── Format helpers ───────────────────────────────────────────
 function formatGBP(n) {
   return '£' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1547,14 +1556,13 @@ async function _sheetsWrite(tabName, action, record, id) {
   } catch (err) {
     console.warn(`_sheetsWrite(${tabName}, ${action}) failed:`, err.message);
     setSyncStatus('error', 'Sync error');
-    // Queue for later retry
     await queueOperation({ tabName, action, record, id, ts: Date.now() }).catch(() => {});
+    _updateSyncBadge();
   }
 }
 
 // ─── Load all app data and renders after auth ─────────────────
 async function loadAppData() {
-  // Init Sheets structure then pull latest data
   try {
     await sheetsInit();
     await syncFromSheets();
@@ -1571,6 +1579,9 @@ async function loadAppData() {
     renderCGT(),
     renderPropertyList(),
   ]);
+  // Flush any ops that were queued while offline
+  processQueue();
+  _updateSyncBadge();
 }
 
 // ─── Sign-in handler ──────────────────────────────────────────
@@ -1710,6 +1721,11 @@ async function init() {
   window.addEventListener('online',  () => banner.classList.add('hidden'));
   window.addEventListener('offline', () => banner.classList.remove('hidden'));
   if (!navigator.onLine) banner.classList.remove('hidden');
+
+  // SW → app: background sync trigger
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    if (e.data === 'process-queue') processQueue();
+  });
 
   // Show checking state while auth resolves
   const signinBtn = document.getElementById('btn-signin');

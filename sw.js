@@ -1,5 +1,5 @@
-// Service worker — Phase 1 skeleton
-const CACHE_NAME = 'property-tracker-v1';
+// Service worker
+const CACHE_NAME = 'property-tracker-v2';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -55,7 +55,18 @@ self.addEventListener('fetch', (e) => {
   );
 });
 
-// Listen for sync messages from app (Phase 11 will extend this)
+// Messages from app
 self.addEventListener('message', (e) => {
   if (e.data === 'skipWaiting') self.skipWaiting();
+});
+
+// Background Sync — wake app clients to flush their IndexedDB queue
+self.addEventListener('sync', (e) => {
+  if (e.tag === 'sheets-sync') {
+    e.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: false }).then(clients => {
+        clients.forEach(c => c.postMessage('process-queue'));
+      })
+    );
+  }
 });
