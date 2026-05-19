@@ -30,10 +30,14 @@ async function _req(url, opts = {}) {
     headers['Content-Type'] = 'application/json';
     opts = { ...opts, body: JSON.stringify(opts.body) };
   }
+
+  console.log('[Sheets] →', opts.method || 'GET', url);
+
   let res = await fetch(url, { ...opts, headers });
 
   // 401 → silent refresh and retry once
   if (res.status === 401) {
+    console.warn('[Sheets] 401 — attempting silent token refresh');
     const ok = await silentRefresh();
     if (ok) {
       headers['Authorization'] = `Bearer ${getAccessToken()}`;
@@ -43,11 +47,14 @@ async function _req(url, opts = {}) {
 
   if (!res.ok) {
     const txt = await res.text().catch(() => res.statusText);
+    console.error('[Sheets] ✗', res.status, url, '\n', txt);
     throw new Error(`Sheets API ${res.status}: ${txt}`);
   }
 
   const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : res.text();
+  const data = ct.includes('application/json') ? await res.json() : await res.text();
+  console.log('[Sheets] ✓', res.status, url, data);
+  return data;
 }
 
 // ─── Column letter helper ─────────────────────────────────────
@@ -159,78 +166,56 @@ async function sheetsRead(tabName) {
 // ─── sheetsAppend — adds one row ──────────────────────────────
 async function sheetsAppend(tabName, record) {
   if (!isAuthenticated()) return null;
-  try {
-    const cols = TAB_COLUMNS[tabName];
-    const lastCol = _colLetter(cols.length);
-    const url = `${SHEETS_BASE}/${SPREADSHEET_ID}/values/${encodeURIComponent(tabName)}!A:${lastCol}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-    return await _req(url, {
-      method: 'POST',
-      body: { values: [_recordToRow(tabName, record)] },
-    });
-  } catch (err) {
-    console.warn(`sheetsAppend(${tabName}) failed:`, err.message);
-    return null;
-  }
+  const cols = TAB_COLUMNS[tabName];
+  const lastCol = _colLetter(cols.length);
+  const row = _recordToRow(tabName, record);
+  const url = `${SHEETS_BASE}/${SPREADSHEET_ID}/values/${encodeURIComponent(tabName)}!A:${lastCol}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+  console.log('[Sheets] sheetsAppend', tabName, 'row:', row);
+  // Let the error propagate — callers (e.g. _sheetsWrite) must catch and queue
+  return _req(url, { method: 'POST', body: { values: [row] } });
 }
 
 // ─── sheetsUpdate — finds row by record.id and overwrites it ──
 async function sheetsUpdate(tabName, record) {
   if (!isAuthenticated()) return null;
-  try {
-    const rowIndex = await _findRow(tabName, record.id);
-    if (rowIndex === -1) {
-      // Row not found — append instead
-      return sheetsAppend(tabName, record);
-    }
-    const cols = TAB_COLUMNS[tabName];
-    const lastCol = _colLetter(cols.length);
-    const range = `${encodeURIComponent(tabName)}!A${rowIndex}:${lastCol}${rowIndex}`;
-    const url = `${SHEETS_BASE}/${SPREADSHEET_ID}/values/${range}?valueInputOption=RAW`;
-    return await _req(url, {
-      method: 'PUT',
-      body: { values: [_recordToRow(tabName, record)] },
-    });
-  } catch (err) {
-    console.warn(`sheetsUpdate(${tabName}) failed:`, err.message);
-    return null;
+  // Let errors propagate so _sheetsWrite can queue the retry
+  const rowIndex = await _findRow(tabName, record.id);
+  if (rowIndex === -1) {
+    console.log('[Sheets] sheetsUpdate: row not found for id', record.id, '— appending instead');
+    return sheetsAppend(tabName, record);
   }
+  const cols = TAB_COLUMNS[tabName];
+  const lastCol = _colLetter(cols.length);
+  const range = `${encodeURIComponent(tabName)}!A${rowIndex}:${lastCol}${rowIndex}`;
+  const url = `${SHEETS_BASE}/${SPREADSHEET_ID}/values/${range}?valueInputOption=RAW`;
+  return _req(url, { method: 'PUT', body: { values: [_recordToRow(tabName, record)] } });
 }
 
 // ─── sheetsDeleteRow — deletes row by record ID ───────────────
 async function sheetsDeleteRow(tabName, id) {
   if (!isAuthenticated()) return null;
-  try {
-    const rowIndex = await _findRow(tabName, id);
-    if (rowIndex === -1) return null;
+  // Let errors propagate so _sheetsWrite can queue the retry
+  const rowIndex = await _findRow(tabName, id);
+  if (rowIndex === -1) return null;
 
-    // Ensure we have the sheetId
-    if (_sheetIdCache[tabName] === undefined) {
-      const meta = await _req(`${SHEETS_BASE}/${SPREADSHEET_ID}?fields=sheets.properties`);
-      (meta.sheets || []).forEach(s => {
-        _sheetIdCache[s.properties.title] = s.properties.sheetId;
-      });
-    }
-
-    const sheetId = _sheetIdCache[tabName];
-    return await _req(`${SHEETS_BASE}/${SPREADSHEET_ID}:batchUpdate`, {
-      method: 'POST',
-      body: {
-        requests: [{
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: 'ROWS',
-              startIndex: rowIndex - 1, // 0-based
-              endIndex:   rowIndex,
-            },
-          },
-        }],
-      },
+  if (_sheetIdCache[tabName] === undefined) {
+    const meta = await _req(`${SHEETS_BASE}/${SPREADSHEET_ID}?fields=sheets.properties`);
+    (meta.sheets || []).forEach(s => {
+      _sheetIdCache[s.properties.title] = s.properties.sheetId;
     });
-  } catch (err) {
-    console.warn(`sheetsDeleteRow(${tabName}) failed:`, err.message);
-    return null;
   }
+
+  const sheetId = _sheetIdCache[tabName];
+  return _req(`${SHEETS_BASE}/${SPREADSHEET_ID}:batchUpdate`, {
+    method: 'POST',
+    body: {
+      requests: [{
+        deleteDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex: rowIndex - 1, endIndex: rowIndex },
+        },
+      }],
+    },
+  });
 }
 
 // ─── syncFromSheets — pull all tabs into IndexedDB ────────────

@@ -1554,7 +1554,7 @@ async function _sheetsWrite(tabName, action, record, id) {
     }
     setSyncStatus('synced', 'Synced');
   } catch (err) {
-    console.warn(`_sheetsWrite(${tabName}, ${action}) failed:`, err.message);
+    console.error(`[Sheets] _sheetsWrite(${tabName}, ${action}) failed — queuing for retry:`, err.message);
     setSyncStatus('error', 'Sync error');
     await queueOperation({ tabName, action, record, id, ts: Date.now() }).catch(() => {});
     _updateSyncBadge();
