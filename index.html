@@ -670,7 +670,20 @@
   </div>
 
   <!-- JS modules -->
-  <script src="config.js" onerror="window.__configMissing=true"></script>
+  <!--
+    Inline config for GitHub Pages deployment.
+    Assigned as window properties so that a local config.js (gitignored)
+    can still override via its own `const` declarations without conflict —
+    a const binding in the global lexical scope takes precedence over a
+    plain window property assignment at the same level.
+    Replace YOUR_SPREADSHEET_ID_HERE with your actual Google Sheets ID.
+  -->
+  <script>
+    window.GOOGLE_CLIENT_ID = '952765845296-6743n4k47gajn6jqdcel5b9c5bfus725.apps.googleusercontent.com';
+    window.SPREADSHEET_ID   = 'YOUR_SPREADSHEET_ID_HERE';
+  </script>
+  <!-- config.js overrides the above for local dev (file is gitignored) -->
+  <script src="config.js" onerror=""></script>
   <script src="js/tax.js"></script>
   <script src="js/db.js"></script>
   <script src="js/auth.js"></script>
