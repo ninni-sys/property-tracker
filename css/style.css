@@ -734,6 +734,25 @@ textarea { resize: vertical; min-height: 64px; }
 
 .receipt-preview-link:hover { text-decoration: underline; }
 
+/* ─── Gmail result header row (subject + open link) ─────────── */
+.gmail-result-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gmail-open-link {
+  flex-shrink: 0;
+  font-size: .75rem;
+  color: var(--primary-light);
+  text-decoration: none;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.gmail-open-link:hover { text-decoration: underline; }
+
 /* ─── Mileage calculator row ────────────────────────────────── */
 .mileage-group {
   display: flex;

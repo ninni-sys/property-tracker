@@ -342,19 +342,18 @@
               <input type="text" name="supplier" placeholder="Company or person paid" />
             </div>
             <div class="form-row">
-              <label>Receipt</label>
+              <label>Receipt / attachment</label>
               <div class="receipt-input-group">
-                <input type="text" name="receipt_ref" id="expense-receipt-ref" placeholder="Ref or filename" />
-                <button type="button" class="btn btn-icon" id="btn-camera" title="Upload photo">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                    <circle cx="12" cy="13" r="4"/>
+                <input type="text" name="receipt_ref" id="expense-receipt-ref" placeholder="Drive file ID or ref" />
+                <button type="button" class="btn btn-icon" id="btn-attach" title="Attach image or PDF">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                   </svg>
                 </button>
               </div>
-              <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" />
+              <input type="file" id="attach-input" accept="image/*,application/pdf" class="hidden" />
               <div id="upload-status" class="upload-status hidden"></div>
-              <a id="receipt-preview-link" href="#" target="_blank" class="receipt-preview-link hidden">📎 View uploaded receipt →</a>
+              <a id="receipt-preview-link" href="#" target="_blank" class="receipt-preview-link hidden">📎 View attached file →</a>
             </div>
             <div class="form-row">
               <label>Notes</label>

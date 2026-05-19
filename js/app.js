@@ -1148,8 +1148,8 @@ function initExpenseForm() {
   const milesIn     = document.getElementById('expense-miles');
   const mileTot     = document.getElementById('mileage-total');
   const amtIn       = document.getElementById('expense-amount');
-  const cameraBtn   = document.getElementById('btn-camera');
-  const cameraInput = document.getElementById('camera-input');
+  const attachBtn   = document.getElementById('btn-attach');
+  const attachInput = document.getElementById('attach-input');
   const uploadStat  = document.getElementById('upload-status');
   const previewLink = document.getElementById('receipt-preview-link');
   const submitBtn   = document.getElementById('expense-submit-btn');
@@ -1171,42 +1171,42 @@ function initExpenseForm() {
     if (total > 0) amtIn.value = total.toFixed(2);
   });
 
-  // Camera / file upload with progress
-  cameraBtn.addEventListener('click', () => cameraInput.click());
+  // File attachment — images and PDFs, uploaded to Drive
+  attachBtn.addEventListener('click', () => attachInput.click());
 
-  cameraInput.addEventListener('change', async (e) => {
+  attachInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    cameraBtn.disabled = true;
+    attachBtn.disabled = true;
     uploadStat.textContent = 'Uploading…';
     uploadStat.classList.remove('hidden', 'upload-error');
     previewLink.classList.add('hidden');
 
     try {
-      const stamp    = new Date().toISOString().slice(0, 10);
-      const filename = `receipt-${stamp}-${file.name}`;
-      const fileId   = await uploadReceipt(file, filename, (pct) => {
+      // Build filename: YYYY-MM-DD_supplier_amount.ext
+      const date     = form.elements['date'].value || new Date().toISOString().slice(0, 10);
+      const supplier = (form.elements['supplier'].value || 'receipt')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'receipt';
+      const amount   = (form.elements['amount'].value || '0').replace('.', '-');
+      const ext      = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'bin';
+      const filename = `${date}_${supplier}_${amount}.${ext}`;
+
+      const fileId = await uploadReceipt(file, filename, (pct) => {
         uploadStat.textContent = `Uploading… ${pct}%`;
       });
 
-      if (fileId) {
-        document.getElementById('expense-receipt-ref').value = fileId;
-        previewLink.href = getReceiptUrl(fileId);
-        previewLink.classList.remove('hidden');
-        uploadStat.textContent = '✓ Uploaded to Drive';
-        setTimeout(() => uploadStat.classList.add('hidden'), 3000);
-      } else {
-        document.getElementById('expense-receipt-ref').value = file.name;
-        uploadStat.textContent = 'Saved filename (Drive upload unavailable)';
-      }
+      document.getElementById('expense-receipt-ref').value = fileId;
+      previewLink.href = getReceiptUrl(fileId);
+      previewLink.classList.remove('hidden');
+      uploadStat.textContent = '✓ Uploaded to Drive';
+      setTimeout(() => uploadStat.classList.add('hidden'), 3000);
     } catch (err) {
       uploadStat.textContent = `Upload failed — ${err.message}`;
       uploadStat.classList.add('upload-error');
-      document.getElementById('expense-receipt-ref').value = file.name;
     } finally {
-      cameraBtn.disabled = false;
-      cameraInput.value  = '';
+      attachBtn.disabled = false;
+      attachInput.value  = '';
     }
   });
 
@@ -1389,7 +1389,10 @@ async function renderGmailResults(results) {
     <div class="gmail-results-count">${results.length} new item${results.length !== 1 ? 's' : ''} found</div>
     ${results.map(r => `
       <div class="gmail-result-item" data-msg-id="${r.gmail_message_id}">
-        <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+        <div class="gmail-result-header">
+          <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+          <a class="gmail-open-link" href="https://mail.google.com/mail/u/0/#all/${r.gmail_message_id}" target="_blank" title="Open original email in Gmail">↗ Gmail</a>
+        </div>
         <div class="gmail-result-meta">
           <span class="gmail-result-supplier">${escHtml(r.suggested_supplier || 'Unknown sender')}</span>
           <span class="gmail-result-dot">·</span>
@@ -1512,7 +1515,10 @@ async function _renderGmailHistory() {
   historyEl.innerHTML = reviewed.slice(0, 50).map(r => `
     <div class="gmail-history-item gmail-history-item--${r.status}">
       <div class="gmail-history-badge gmail-history-badge--${r.status}">${r.status === 'approved' ? 'Approved' : 'Dismissed'}</div>
-      <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+      <div class="gmail-result-header">
+        <div class="gmail-result-subject">${escHtml(r.subject)}</div>
+        <a class="gmail-open-link" href="https://mail.google.com/mail/u/0/#all/${r.gmail_message_id}" target="_blank" title="Open in Gmail">↗ Gmail</a>
+      </div>
       <div class="gmail-result-meta">
         ${r.suggested_supplier ? escHtml(r.suggested_supplier) + ' · ' : ''}${formatDate(r.date)}
         ${r.suggested_amount ? ' · ' + formatGBP(Number(r.suggested_amount)) : ''}
