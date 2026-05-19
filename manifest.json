@@ -2,9 +2,10 @@
   "name": "Property Tax Tracker",
   "short_name": "PropTax",
   "description": "Track rental income, expenses and CGT across multiple properties",
-  "start_url": "/",
+  "start_url": "/property-tracker/",
+  "scope": "/property-tracker/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
+  "background_color": "#f4f6f8",
   "theme_color": "#4f46e5",
   "orientation": "portrait-primary",
   "icons": [
