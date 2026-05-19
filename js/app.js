@@ -564,7 +564,7 @@ async function renderReviewList() {
   const all = await dbGetAll('expenses');
   const allPending = all.filter(e => expenseType(e.category) === 'uncategorised');
 
-  // ── Badge (all uncategorised, not filtered) ───────────────
+  // ── Badge (all uncategorised, unfiltered) ─────────────────
   const badge = document.getElementById('review-badge');
   if (badge) {
     badge.textContent = allPending.length;
@@ -573,7 +573,7 @@ async function renderReviewList() {
 
   // ── Progress tracking ─────────────────────────────────────
   if (allPending.length > 0 && allPending.length > _reviewTotal) {
-    _reviewTotal = allPending.length;      // grows if new uncategorised items arrive
+    _reviewTotal = allPending.length;
   }
   if (allPending.length === 0) _reviewTotal = 0;
 
@@ -596,9 +596,9 @@ async function renderReviewList() {
   // ── Filter + sort visible items ───────────────────────────
   let visible = allPending.filter(e => !propFilter || e.property_id === propFilter);
 
-  if (sortOrder === 'newest')  visible.sort((a, b) => b.date.localeCompare(a.date));
+  if (sortOrder === 'newest')       visible.sort((a, b) => b.date.localeCompare(a.date));
   else if (sortOrder === 'largest') visible.sort((a, b) => Number(b.amount) - Number(a.amount));
-  else                         visible.sort((a, b) => a.date.localeCompare(b.date));
+  else                              visible.sort((a, b) => a.date.localeCompare(b.date));
 
   // ── Render ────────────────────────────────────────────────
   const el = document.getElementById('review-list');
@@ -643,29 +643,34 @@ async function renderReviewList() {
   el.innerHTML = visible.map(r => {
     const receiptHtml = isDriveFileId(r.receipt_ref)
       ? `<a href="${getReceiptUrl(r.receipt_ref)}" target="_blank" class="tag receipt-tag">📎 Receipt</a>`
-      : r.receipt_ref ? `<span class="tag">📎 ${r.receipt_ref.slice(0, 20)}</span>` : '';
+      : r.receipt_ref ? `<span class="tag">📎 ${escHtml(r.receipt_ref.slice(0, 20))}</span>` : '';
 
     return `
       <div class="review-item" data-expense-id="${r.id}">
         <div class="review-item-header">
           <div class="review-item-left">
-            <span class="review-item-prop">${getPropertyName(r.property_id)}</span>
-            ${r.supplier ? `<span class="review-item-supplier">${r.supplier}</span>` : ''}
+            <span class="review-item-prop">${escHtml(getPropertyName(r.property_id))}</span>
+            ${r.supplier ? `<span class="review-item-supplier">${escHtml(r.supplier)}</span>` : ''}
           </div>
-          <span class="review-item-amount">−${formatGBP(r.amount)}</span>
+          <span class="review-item-amount" data-amount-edit="${r.id}" title="Tap to edit amount">−${formatGBP(r.amount)}</span>
         </div>
         <div class="review-item-meta">
           <span class="review-item-date">${formatDate(r.date)}</span>
-          <span class="tag">${r.tax_year}</span>
+          <span class="tag">${escHtml(r.tax_year)}</span>
           ${receiptHtml}
         </div>
-        ${r.notes ? `<div class="review-item-notes">${r.notes}</div>` : ''}
+        ${r.notes ? `<div class="review-item-notes">${escHtml(r.notes)}</div>` : ''}
         <select class="review-category-select" data-expense-id="${r.id}">
           ${categoryOptions}
         </select>
+        <div class="review-item-actions">
+          <button class="btn btn-secondary btn-xs" data-edit-expense="${r.id}">Edit</button>
+          <button class="btn btn-danger btn-xs" data-delete-expense="${r.id}">Delete</button>
+        </div>
       </div>`;
   }).join('');
 
+  // ── Categorise ────────────────────────────────────────────
   el.querySelectorAll('.review-category-select').forEach(sel => {
     sel.addEventListener('change', async (e) => {
       const cat = e.target.value;
@@ -674,16 +679,14 @@ async function renderReviewList() {
       const id   = e.target.dataset.expenseId;
       const item = e.target.closest('.review-item');
 
-      // Animate out the card
       item.classList.add('review-item--done');
       e.target.disabled = true;
-
-      // Save after animation
       await new Promise(r => setTimeout(r, 320));
 
       const record = await dbGet('expenses', id);
       if (record) {
-        record.category = cat;
+        record.category   = cat;
+        record.is_capital = cat === 'Improvements' ? 1 : 0;
         await dbPut('expenses', record);
         _sheetsWrite('Expenses', 'update', record);
       }
@@ -691,6 +694,77 @@ async function renderReviewList() {
       await renderReviewList();
       renderDashboard();
       renderExpenseLedger();
+    });
+  });
+
+  // ── Edit — open full expense form pre-filled ──────────────
+  el.querySelectorAll('[data-edit-expense]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigateTo('expenses');
+      openExpenseForm(btn.dataset.editExpense);
+    });
+  });
+
+  // ── Delete ────────────────────────────────────────────────
+  el.querySelectorAll('[data-delete-expense]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this expense? This cannot be undone.')) return;
+      const id   = btn.dataset.deleteExpense;
+      const item = btn.closest('.review-item');
+      item.classList.add('review-item--done');
+      await new Promise(r => setTimeout(r, 320));
+      await dbDelete('expenses', id);
+      _sheetsWrite('Expenses', 'delete', null, id);
+      await renderReviewList();
+      renderDashboard();
+      renderExpenseLedger();
+      showToast('Expense deleted', 'warn');
+    });
+  });
+
+  // ── Inline amount edit ────────────────────────────────────
+  el.querySelectorAll('[data-amount-edit]').forEach(span => {
+    span.addEventListener('click', () => {
+      if (span.querySelector('input')) return; // already editing
+      const id      = span.dataset.amountEdit;
+      const current = span.textContent.replace(/[^0-9.]/g, '');
+
+      const input = document.createElement('input');
+      input.type      = 'number';
+      input.step      = '0.01';
+      input.min       = '0.01';
+      input.value     = current;
+      input.className = 'review-amount-input';
+
+      // Replace span content with input, keep the minus prefix
+      span.textContent = '−';
+      span.appendChild(input);
+      input.focus();
+      input.select();
+
+      const restore = () => {
+        span.textContent = `−${formatGBP(current)}`;
+        span.dataset.amountEdit = id;
+      };
+
+      const commit = async () => {
+        const val = parseFloat(input.value);
+        if (!val || val <= 0) { restore(); return; }
+        const record = await dbGet('expenses', id);
+        if (!record) { restore(); return; }
+        if (val === Number(record.amount)) { restore(); return; }
+        record.amount = val;
+        await dbPut('expenses', record);
+        _sheetsWrite('Expenses', 'update', record);
+        await renderReviewList();
+        renderDashboard();
+      };
+
+      input.addEventListener('blur',    commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.removeEventListener('blur', commit); restore(); }
+      });
     });
   });
 }

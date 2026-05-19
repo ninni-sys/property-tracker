@@ -1391,6 +1391,38 @@ textarea { resize: vertical; min-height: 64px; }
   color: var(--warn);
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(245,158,11,.5);
+  padding-bottom: 1px;
+}
+
+.review-item-amount:hover { border-bottom-color: var(--warn); }
+
+.review-amount-input {
+  width: 90px;
+  background: var(--bg);
+  border: none;
+  border-bottom: 2px solid var(--warn);
+  border-radius: 0;
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 1rem;
+  font-family: var(--font);
+  padding: 0 2px;
+  outline: none;
+  /* spin buttons hidden — clean inline look */
+  -moz-appearance: textfield;
+}
+
+.review-amount-input::-webkit-outer-spin-button,
+.review-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.review-item-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
 }
 
 .review-item-meta {
